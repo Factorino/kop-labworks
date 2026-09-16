@@ -1,0 +1,67 @@
+# --- Coverage configuration --------------------------------------------------
+#
+# Read by coverage.py and, through it, by pytest-cov. Keeping the settings here
+# rather than on the command line means `just cov` and CI cannot disagree about
+# what is measured or what threshold applies.
+#
+# Caution: this is an ini file parsed by configparser — inline comments become
+# part of the value. Comments must occupy a whole line.
+#
+# Related files:
+#   - .pytest.toml             the test run itself
+#
+# Recipes: `just cov`.
+
+
+# --- Measurement -------------------------------------------------------------
+# source_pkgs names an importable package rather than a path: locally the code
+# is imported from src/, but inside a container image it comes from the
+# installed wheel in site-packages. See [paths] below for how the two are
+# reconciled.
+
+[run]
+source_pkgs = kop
+branch = True
+relative_files = True
+
+
+# --- Path equivalence --------------------------------------------------------
+# Treats the same module under different roots as one file, so that reports
+# produced in a container can be combined with those produced on the host.
+
+[paths]
+source =
+    src/
+    */site-packages/
+
+
+# --- Reporting ---------------------------------------------------------------
+# fail_under grows together with the code: every feature branch brings its
+# tests and raises the threshold to what they reach. The target is 80.
+#
+# exclude_also extends the default exclusions rather than replacing them, and
+# covers code that cannot meaningfully be executed by tests: type-checking
+# imports, abstract declarations, overloads and script entry points.
+
+[report]
+show_missing = True
+skip_covered = True
+precision = 2
+fail_under = 0
+exclude_also =
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    @(abc\.)?abstractmethod
+    @(typing\.)?overload
+    class .*\(.*\bProtocol\b.*\):
+    if __name__ == ["']__main__["']:
+
+
+# --- Output formats ----------------------------------------------------------
+# Both locations are ignored by git; `just clean` removes them.
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

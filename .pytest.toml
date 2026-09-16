@@ -1,0 +1,73 @@
+# --- Pytest configuration ----------------------------------------------------
+#
+# Caution: in a standalone pytest.toml the table is [pytest]. The familiar
+# [tool.pytest.ini_options] only works inside pyproject.toml — here pytest
+# would detect the file and then silently ignore every setting in it.
+#
+# Related files:
+#   - .coveragerc              coverage thresholds and exclusions
+#   - tests/conftest.py        applies the layer markers declared below
+#
+# Recipes: `just test`, `just cov`.
+
+[pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+
+
+# --- Default command line ----------------------------------------------------
+# Coverage flags are deliberately absent: they slow every run down and break
+# debuggers. Use `just cov` instead. Parallelism is opt-in too: `just test -n auto`.
+
+addopts = [
+    "--strict-markers",  # An unknown marker is an error, not a silent skip.
+    "--strict-config",  # A typo in this file is an error.
+    "--import-mode=importlib",
+    "-ra",  # Summary for every non-passing test.
+    "--showlocals",
+    "--durations=10",
+]
+
+
+# --- Markers -----------------------------------------------------------------
+# The layer markers are applied automatically by directory name, see
+# tests/conftest.py. This list must stay in sync with the directories under
+# tests/ — with --strict-markers any mismatch fails immediately.
+
+markers = [
+    "unit: isolated tests of the domain and application layers",
+    "integration: tests against real external dependencies",
+    "e2e: end-to-end tests through the external interface of the application",
+    "slow: noticeably slow tests; exclude them with -m 'not slow'",
+]
+
+
+# --- Strictness --------------------------------------------------------------
+
+# An unexpectedly passing xfail is an error: the test was fixed but the marker
+# was left behind.
+xfail_strict = true
+
+# Any warning is an error. Add narrow exceptions here as
+# "ignore:<message>:DeprecationWarning:<module>", each with the reason next to it.
+filterwarnings = [
+    "error",
+]
+
+
+# --- Plugin settings ---------------------------------------------------------
+
+# pytest-timeout. Must be a string: an integer makes pytest fail with an
+# INTERNALERROR in TOML configuration. Override per test with
+# @pytest.mark.timeout(...).
+#
+# timeout_method is intentionally unset — pytest-timeout picks `signal` where
+# available, which fails a single test and lets the run finish; `thread` would
+# kill the whole process and lose the report.
+timeout = "60"
+
+# pytest-asyncio. Strict mode: an async test without @pytest.mark.asyncio
+# fails instead of being silently skipped.
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
