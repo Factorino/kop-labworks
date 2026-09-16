@@ -30,6 +30,23 @@ just hooks    # git-хуки pre-commit, commit-msg и pre-push
 Зависимости добавляются через `uv add` (или `uv add --group <группа>`),
 `uv.lock` коммитится вместе с `pyproject.toml`.
 
+## Docker
+
+`just init` создаёт `.config/compose.env` и `.secrets/*` из шаблонов
+`*.example` и не перезаписывает существующие файлы. Значения `change-me`
+заменяются перед первым запуском; сами файлы в git не попадают.
+
+| Команда | Что делает |
+| --- | --- |
+| `just test-container` | Тесты в образе рядом с временными Postgres, Redis и RabbitMQ; после прогона всё удаляется |
+| `just build` | Runtime-образ `kop-labworks:local` с метками версии и коммита |
+| `just up` / `just down` | Стек приложения (`docker/docker-compose.yml`); тома переживают `down` |
+| `just teardown` | Стек приложения и тестовый стек вместе с томами |
+| `just dev-up` / `just dev-down` | Postgres, Redis и RabbitMQ на `127.0.0.1` для процессов на хосте |
+
+Базовые образы закреплены по digest: пересборка того же коммита даёт тот же
+образ.
+
 ## Архитектура
 
 Пакет `src/kop` разделён на слои. Правило зависимостей проверяет import-linter
@@ -136,8 +153,8 @@ Rebase and merge не используется.
 | Workflow | Когда запускается | Что делает |
 | --- | --- | --- |
 | `commits.yml` | Pull request | Формат сообщений коммитов и заголовка PR |
-| `ci.yml` | Pull request; push в `master` и `backend`; вручную | `lint` — все хуки pre-commit; `test` — тесты на Python 3.12 и 3.13, отчёты JUnit и покрытия в артефактах; `security` — аудит зависимостей; `ci` — сводный результат |
-| `release.yml` | Тег `v*` | Сверка тега с версией пакета, сборка wheel и sdist, GitHub Release с разделом из `CHANGELOG.md` |
+| `ci.yml` | Pull request; push в `master` и `backend`; вручную | `lint` — все хуки pre-commit; `test` — тесты на Python 3.12 и 3.13, отчёты JUnit и покрытия в артефактах; `security` — аудит зависимостей; `docker` — тесты в образе, сборка runtime-образа и проверка trivy; `ci` — сводный результат |
+| `release.yml` | Тег `v*` | Сверка тега с версией пакета, сборка wheel и sdist, GitHub Release с разделом из `CHANGELOG.md`; образ в GHCR с тегами версии, `major.minor` и коммита |
 | `metrics.yml` | Тег `v*`; вручную | Срез метрик версии в артефактах (`scripts/metrics.py`) |
 
 Обязательные проверки для слияния в `backend`: `commits` и `ci`.
