@@ -26,6 +26,13 @@ name = "cz_conventional_commits"
 version_provider = "scm"
 version_scheme = "semver"
 
+# The backend writes the version into pyproject.toml as well, so that the
+# wheel carries it. uv.lock follows on commit: the uv-lock hook in
+# .pre-commit-config.yaml re-resolves it after the bump.
+version_files = [
+    "pyproject.toml:^version",
+]
+
 # While the project is on 0.x a breaking change bumps the minor version rather
 # than the major one. Remove when releasing 1.0.0.
 major_version_zero = true
