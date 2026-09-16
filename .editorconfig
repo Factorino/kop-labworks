@@ -1,0 +1,61 @@
+# --- Editor settings ---------------------------------------------------------
+#
+# Deliberately identical to what is already enforced automatically: line
+# endings and the final newline come from the mixed-line-ending and
+# end-of-file-fixer hooks in .pre-commit-config.yaml; the Python line length
+# matches the ruff settings of the backend branch. A disagreement here would
+# mean the editor and the tools push the same file in opposite directions.
+#
+# Note: the EditorConfig format has no inline comments — a comment occupies a
+# whole line.
+
+root = true
+
+
+# --- Defaults ----------------------------------------------------------------
+# Apply to every file; the sections below only override what differs.
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+max_line_length = 99
+
+
+# --- YAML --------------------------------------------------------------------
+# Two spaces: with four, the nested lists in compose files and workflows become
+# unreadable.
+
+[*.{yml,yaml}]
+indent_size = 2
+
+
+# --- Frontend ----------------------------------------------------------------
+# Two spaces is the convention of the Vite template and of the JS ecosystem as
+# a whole; the formatter configured in frontend/ has the final word.
+
+[*.{js,jsx,mjs,cjs,ts,tsx,json,css,html}]
+indent_size = 2
+max_line_length = off
+
+
+# --- Markdown ----------------------------------------------------------------
+# Two trailing spaces are a hard line break, so trimming is off here. The
+# trailing-whitespace hook gets --markdown-linebreak-ext=md for the same reason.
+# Line length is unset so that editors do not reflow prose.
+
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+
+# --- Generated and legal files -----------------------------------------------
+# Not ours to format: lock files are generated, LICENSE is verbatim text.
+
+[{*.lock,package-lock.json,LICENSE}]
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+max_line_length = off
