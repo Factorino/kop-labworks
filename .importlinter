@@ -1,0 +1,97 @@
+# --- Import Linter configuration ---------------------------------------------
+#
+# Enforces the dependency rule of the layered architecture. Ruff and mypy see
+# nothing wrong with a domain module importing a database driver; this is the
+# tool that does.
+#
+# Related files:
+#   - .ruff.toml               bans relative imports, which would hide violations
+#
+# Recipes: `just lint`, `just check`.
+#
+# root_package must be renamed together with the package itself.
+
+[importlinter]
+root_package = kop
+# Required by the forbidden contracts below: without it third-party packages
+# are not part of the graph, and a contract naming one cannot see it imported.
+include_external_packages = True
+
+
+# --- Layer contract ----------------------------------------------------------
+# Dependencies may only point downwards. Layers listed on the same line are
+# siblings: presentation and infrastructure may not import each other.
+#
+#   main            composition root, may import everything below
+#   presentation    inbound adapters (HTTP, CLI)
+#   infrastructure  outbound adapters (database, brokers, external APIs)
+#   application     use cases, orchestrates the domain through ports
+#   domain          entities and business rules, imports nothing of ours
+#
+# A contract passes trivially while the layers are empty. It only starts
+# protecting anything once real modules exist.
+
+[importlinter:contract:layers]
+name = Clean Architecture layers
+type = layers
+containers =
+    kop
+layers =
+    main
+    presentation | infrastructure
+    application
+    domain
+
+
+# --- Framework-free core -----------------------------------------------------
+# The layer contract only orders our own packages; it has nothing to say about
+# a domain entity importing SQLAlchemy. These two close that gap.
+#
+# The domain imports no third-party package that does I/O, validation or
+# wiring. The application may use pydantic for its DTOs, but never a driver, a
+# web framework or the container.
+#
+# The lists name the packages the project is planned to depend on, so that the
+# contracts hold from the first commit that brings one in.
+
+[importlinter:contract:domain-purity]
+name = Domain imports no frameworks
+type = forbidden
+source_modules =
+    kop.domain
+forbidden_modules =
+    adaptix
+    aio_pika
+    alembic
+    bcrypt
+    dishka
+    fastapi
+    httpx
+    psycopg
+    pydantic
+    pydantic_settings
+    redis
+    sqlalchemy
+    starlette
+    structlog
+    typer
+    uvicorn
+
+[importlinter:contract:application-purity]
+name = Application imports no drivers or transports
+type = forbidden
+source_modules =
+    kop.application
+forbidden_modules =
+    aio_pika
+    alembic
+    bcrypt
+    dishka
+    fastapi
+    httpx
+    psycopg
+    redis
+    sqlalchemy
+    starlette
+    typer
+    uvicorn
