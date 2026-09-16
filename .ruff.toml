@@ -203,6 +203,13 @@ ignore-variadic-names = true
     "ANN401",
 ]
 
+# Maintenance scripts drive command-line tools and report to the terminal.
+"scripts/**/*.py" = [
+    "S603",  # subprocess with arguments built from constants, never user input.
+    "S607",  # Tools are found on PATH inside the uv environment on purpose.
+    "T201",  # print is the output channel of a script.
+]
+
 "conftest.py" = [
     "D100",
     "D101",

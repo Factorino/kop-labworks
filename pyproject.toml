@@ -98,6 +98,18 @@ test = [
     "pytest-xdist>=3.8.0",
 ]
 
+# Dependency vulnerability scanning. Static analysis of the source is already
+# covered by ruff's flake8-bandit rules, so no separate SAST tool is needed.
+security = [
+    "pip-audit>=2.10.1",
+]
+
+# Cyclomatic complexity for the release metrics (scripts/metrics.py). The other
+# metrics come from tools already in `lint` and `test`.
+metrics = [
+    "radon>=6.0.1",
+]
+
 # The git hooks and the release tooling. The commit message hook itself runs
 # from the commitizen repository (see .pre-commit-config.yaml); this copy is
 # for `just commit` and `just bump`.
@@ -113,6 +125,8 @@ release = [
 dev = [
     { include-group = "lint" },
     { include-group = "test" },
+    { include-group = "security" },
+    { include-group = "metrics" },
     { include-group = "hooks" },
     { include-group = "release" },
 ]
