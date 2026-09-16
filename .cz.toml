@@ -51,5 +51,9 @@ bump_message = "bump: version $current_version -> $new_version"
 # header of CHANGELOG.md intact.
 
 changelog_file = "CHANGELOG.md"
+
+# Section headings carry the version only, without the release date. Resolved
+# relative to the working directory, so commitizen runs from the root.
+template = ".changelog.md.j2"
 changelog_incremental = true
 update_changelog_on_bump = true
