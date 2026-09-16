@@ -1,0 +1,68 @@
+# --- Commit message check ----------------------------------------------------
+#
+# The same Conventional Commits check as the commit-msg hook, for every pull
+# request: a hook can be skipped locally (`--no-verify`) or simply not
+# installed, CI cannot.
+#
+# Two things are checked:
+#   - every commit of the pull request, since merge commits into master keep
+#     them in the history and commitizen builds CHANGELOG.md from them;
+#   - the pull request title, since squash merge turns it into the commit
+#     message of the task branch.
+#
+# Merge commits ("Merge pull request #N ...") pass: commitizen allows the
+# "Merge" prefix by default.
+#
+# Related files:
+#   - .cz.toml                  the format being checked
+#   - .pre-commit-config.yaml   the commitizen `rev` must match
+#                               COMMITIZEN_VERSION below
+#
+# The job name `commits` is the required status check in branch protection;
+# renaming it silently turns the requirement off.
+
+name: commits
+
+on:
+  pull_request:
+    # `edited` re-runs the check when only the title changes.
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commits-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  COMMITIZEN_VERSION: "4.18.1"
+
+jobs:
+  commits:
+    name: commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Full history: the commit range below reaches back to the base branch.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Event fields are passed through env, never interpolated into the
+      # script: a pull request title is untrusted input.
+      - name: Check commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          pipx run --spec "commitizen==${COMMITIZEN_VERSION}"
+          cz check --rev-range "${BASE_SHA}..${HEAD_SHA}"
+
+      - name: Check pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: >-
+          pipx run --spec "commitizen==${COMMITIZEN_VERSION}"
+          cz check --message "${PR_TITLE}"
