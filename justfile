@@ -49,7 +49,7 @@ hooks:
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    uv run mypy src tests
+    uv run mypy src tests scripts
     uv run lint-imports
 
 # Apply the automatic fixes that `lint` only reports.
@@ -58,10 +58,17 @@ fix:
     uv run ruff check --fix .
     uv run ruff format .
 
-# Run every hook over the whole repository.
+# Run every hook over the whole repository, exactly as the CI `lint` job does.
 [group('lint')]
 pre-commit:
     uv run pre-commit run --all-files
+
+# `--disable-pip` works because the export carries hashes; nothing is installed.
+
+# Audit every locked dependency for known vulnerabilities. Needs network.
+[group('lint')]
+audit:
+    uv export --frozen --no-emit-project --all-groups --format requirements.txt | uv run pip-audit --disable-pip --requirement /dev/stdin
 
 
 # --- Tests -------------------------------------------------------------------
@@ -77,6 +84,11 @@ test *args:
 cov *args:
     uv run pytest --cov {{ args }}
 
+# The reports CI keeps as artefacts: JUnit XML, coverage XML and HTML.
+[group('test')]
+test-report *args:
+    uv run pytest --cov --cov-report=term --cov-report=xml --cov-report=html --junitxml=junit.xml {{ args }}
+
 
 # --- Version and changelog ---------------------------------------------------
 # Configured in .cz.toml; the release procedure is in CONTRIBUTING.md.
@@ -91,6 +103,11 @@ commit:
 bump *args:
     uv run cz bump {{ args }}
 
+# Write docs/metrics/<version>.json and the summary table: `just metrics v0.2.0`.
+[group('release')]
+metrics version *args:
+    uv run python -m scripts.metrics {{ version }} {{ args }}
+
 
 # --- Cleanup -----------------------------------------------------------------
 # Everything this deletes is regenerated on demand, so removing it is safe.
@@ -99,7 +116,7 @@ bump *args:
 [group('clean')]
 clean:
     rm -rf .ruff_cache .mypy_cache .pytest_cache .import_linter_cache \
-        .coverage coverage.xml htmlcov dist build
+        .coverage coverage.xml junit.xml htmlcov dist build
     find . -type d -name __pycache__ -not -path './.venv/*' -exec rm -rf {} +
 
 

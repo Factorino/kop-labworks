@@ -95,7 +95,7 @@ repos:
       # pass_filenames: false. The directory list must match `just lint`.
       - id: mypy
         name: mypy
-        entry: uv run mypy src tests
+        entry: uv run mypy src tests scripts
         language: system
         types_or: [python, pyi]
         pass_filenames: false

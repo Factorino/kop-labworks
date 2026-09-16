@@ -1,0 +1,94 @@
+# --- Release -----------------------------------------------------------------
+#
+# Triggered by a version tag. Publishes a GitHub Release with the wheel and
+# the sdist attached and the notes taken from CHANGELOG.md.
+#
+# The tag is created by hand after the release pull request is merged, so the
+# first step checks that it agrees with the version the bump wrote into
+# pyproject.toml.
+#
+# Related files:
+#   - .cz.toml                  tag format and version_files
+#   - CHANGELOG.md              the source of the release notes
+#   - CONTRIBUTING.md           the release procedure
+#
+# The container image is added to this workflow together with docker/Dockerfile.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]  # Must match tag_format in .cz.toml.
+
+permissions:
+  contents: read
+
+# Releases are never cancelled halfway: a partially published release is worse
+# than waiting for the previous one to finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.5"
+
+
+jobs:
+  release:
+    name: github release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write  # Required to create the release.
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0  # No floating major tag upstream.
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      # Failing here beats publishing a release under the wrong number.
+      - name: Verify the tag against the package version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          if [ "${tag}" != "${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${version}"
+            exit 1
+          fi
+          echo "Tag and version agree: ${version}"
+
+      - name: Build the wheel and sdist
+        run: uv build
+
+      # Commitizen already wrote this section during the bump, so taking it
+      # verbatim keeps the release notes and CHANGELOG.md from diverging.
+      # Extracted with awk rather than `cz changelog <rev>`, which conflicts
+      # with changelog_incremental in .cz.toml.
+      - name: Extract the release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          awk -v tag="## ${GITHUB_REF_NAME}" '
+            index($0, tag) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::warning::No section for ${GITHUB_REF_NAME} found in CHANGELOG.md"
+            echo "See CHANGELOG.md for the changes." > release-notes.md
+          fi
+          cat release-notes.md
+
+      # gh is preinstalled on the runner, so no third-party action is needed.
+      # --verify-tag refuses to create a release for a tag that does not exist.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            --verify-tag \
+            dist/*

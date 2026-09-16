@@ -1,0 +1,159 @@
+# --- Continuous integration --------------------------------------------------
+#
+# Every job calls a `just` recipe rather than the underlying tool, so CI and a
+# local run cannot drift apart. Dependency groups are narrowed per job, which
+# keeps each one installing only what it needs.
+#
+# Related files:
+#   - justfile                        the recipes invoked below
+#   - pyproject.toml                  the dependency groups each job installs
+#   - .github/workflows/commits.yml   commit message check, a separate workflow
+#   - .github/workflows/release.yml   runs on a tag, not on a push
+#
+# Note: the `ci` job at the bottom is the one to require in branch protection.
+
+name: CI
+
+on:
+  push:
+    branches: [master, backend]
+  pull_request:
+  workflow_dispatch:  # Allows a manual run from the Actions tab.
+
+# Least privilege by default; no job here needs more.
+permissions:
+  contents: read
+
+# A new push to the same ref cancels the previous unfinished run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The uv version on the runner; keep it in step with the uv_build bound in
+  # pyproject.toml.
+  UV_VERSION: "0.12.5"
+
+
+jobs:
+  # --- Linting, types and layer contract -------------------------------------
+  # Runs the pre-commit hooks rather than `just lint`: the set of checks is
+  # then described in exactly one place, and CI runs what developers run.
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0  # No floating major tag upstream.
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      # test is needed not to run tests but for mypy: with
+      # ignore_missing_imports = False it must see pytest, which tests/ imports.
+      - run: uv sync --locked --no-default-groups --group lint --group hooks --group test
+
+      # The uv binary directory is not guaranteed to be on the runner PATH.
+      - name: Install just
+        run: |
+          uv tool install rust-just
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      # The hook environments are built from the upstream repositories; caching
+      # them by the config hash saves most of the job's time.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - run: just pre-commit
+
+  # --- Test suite ------------------------------------------------------------
+  # The matrix substantiates the ">=3.12" claim in pyproject.toml rather than
+  # taking it on trust.
+
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false  # One failing version must not hide the others.
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0  # No floating major tag upstream.
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - run: uv sync --locked --no-default-groups --group test
+
+      - name: Install just
+        run: |
+          uv tool install rust-just
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      # The coverage threshold and the exclusion list live in .coveragerc.
+      - run: just test-report
+
+      # Kept even on failure: the report is what explains it.
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: test-reports-py${{ matrix.python-version }}
+          path: |
+            junit.xml
+            coverage.xml
+            htmlcov/
+          if-no-files-found: error
+
+  # --- Dependency vulnerabilities --------------------------------------------
+  # Audits everything pinned in uv.lock, development tooling included: a
+  # vulnerability there is part of the supply chain too.
+  #
+  # No separate SAST step is needed — ruff runs the flake8-bandit rules (the S
+  # group) as part of select = ["ALL"].
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0  # No floating major tag upstream.
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - run: uv sync --locked --no-default-groups --group security
+
+      - name: Install just
+        run: |
+          uv tool install rust-just
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - run: just audit
+
+  # --- Aggregate status ------------------------------------------------------
+  # The single check worth requiring in branch protection: adding a new job
+  # above will not require changing the repository settings, only `needs`.
+
+  ci:
+    name: ci
+    if: always()  # Must run even when a dependency failed.
+    needs: [lint, test, security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify the results of the previous jobs
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "::error::Some checks did not pass"
+          exit 1

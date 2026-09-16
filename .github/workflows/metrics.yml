@@ -1,0 +1,72 @@
+# --- Release metrics ---------------------------------------------------------
+#
+# Takes the metrics snapshot of a version (scripts/metrics.py) and keeps it as
+# an artefact. The snapshot committed to docs/metrics/ is produced by the same
+# recipe during the release procedure; this run is the independent check that
+# the numbers are reproducible on a clean machine.
+#
+# Related files:
+#   - scripts/metrics.py        what is measured and how
+#   - justfile                  the `metrics` recipe
+#   - CONTRIBUTING.md           where the snapshot fits into a release
+
+name: Metrics
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to measure at the selected ref, e.g. v0.2.0
+        required: true
+
+permissions:
+  contents: read
+  actions: read  # M6 reads the history of CI runs.
+
+concurrency:
+  group: metrics-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.5"
+
+
+jobs:
+  metrics:
+    name: metrics
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Full history and tags: M5 counts commits since the previous version.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.1.0  # No floating major tag upstream.
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - run: uv sync --locked --no-default-groups --group lint --group test --group metrics
+
+      - name: Install just
+        run: |
+          uv tool install rust-just
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      # The version comes from the tag or from the manual input; both are passed
+      # through env rather than interpolated into the script.
+      - name: Collect the metrics
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: just metrics "${VERSION}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: metrics-${{ inputs.version || github.ref_name }}
+          path: docs/metrics/
+          if-no-files-found: error
