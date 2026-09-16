@@ -1,0 +1,61 @@
+# --- Bug report form ---------------------------------------------------------
+# A form rather than a Markdown template: required fields cannot be deleted,
+# so a report always arrives with the information needed to reproduce it.
+
+name: Ошибка
+description: Приложение ведёт себя не так, как описано
+labels: [bug]
+
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что произошло
+      description: Опишите поведение и что ожидалось вместо него.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Как воспроизвести
+      description: Кратчайшая последовательность шагов или команд.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Вывод или журнал
+      description: Полностью, а не отрывок. Форматирование добавится автоматически.
+      render: shell
+
+  - type: dropdown
+    id: part
+    attributes:
+      label: Часть проекта
+      options:
+        - серверная часть (backend)
+        - веб-интерфейс (frontend)
+        - инфраструктура (CI, Docker)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: Тег, номер версии или хеш коммита.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Окружение
+      description: ОС, браузер или версия Python; локально или в контейнере.
+      placeholder: Ubuntu 24.04, Firefox 143, docker compose

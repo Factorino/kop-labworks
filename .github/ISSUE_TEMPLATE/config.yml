@@ -1,0 +1,7 @@
+# --- Issue chooser -----------------------------------------------------------
+#
+# Disables blank issues so that every report arrives through one of the forms
+# in this directory. Planned work is tracked in YouTrack (project KOP); GitHub
+# issues are for defects and proposals raised from outside.
+
+blank_issues_enabled: false

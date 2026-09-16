@@ -1,0 +1,30 @@
+# --- Dependency updates ------------------------------------------------------
+#
+# Dependabot reads this file from the default branch (master) only. Ecosystems
+# whose manifests live on the backend and frontend branches (uv, docker, npm)
+# are added here with `target-branch` once those branches exist; an entry for
+# a directory that does not exist yet would only produce errors.
+#
+# commit-message.prefix is not decoration: commit messages and pull request
+# titles are validated as Conventional Commits (see .cz.toml and
+# .github/workflows/commits.yml), and without a prefix the pull requests
+# Dependabot opens would fail that check.
+
+version: 2
+
+updates:
+  # --- GitHub Actions --------------------------------------------------------
+  # Tracks the `uses:` versions across .github/workflows/.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]

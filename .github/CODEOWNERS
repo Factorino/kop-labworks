@@ -1,0 +1,17 @@
+# --- Code owners -------------------------------------------------------------
+#
+# Whoever is listed here is requested as a reviewer automatically.
+#
+# Branch protection deliberately does not require code owner approval: the
+# project has a single developer, and GitHub does not let the author of a pull
+# request approve it.
+
+* @Factorino
+
+
+# --- Tooling -----------------------------------------------------------------
+# Called out separately so that a change to the pipeline or the image is never
+# reviewed with less care than a change to the application.
+
+/.github/ @Factorino
+/docker/ @Factorino

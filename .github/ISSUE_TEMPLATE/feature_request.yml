@@ -1,0 +1,40 @@
+# --- Feature request form ----------------------------------------------------
+# Asks for the problem before the solution: it is the problem statement that
+# makes a better option findable.
+
+name: Предложение
+description: Идея новой функции или улучшения
+labels: [enhancement]
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему решает
+      description: Начните с проблемы, а не с решения.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Что предлагается
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Какие варианты рассматривались
+      description: Включая то, как проблема обходится сейчас.
+
+  - type: dropdown
+    id: part
+    attributes:
+      label: Затрагиваемые части
+      multiple: true
+      options:
+        - серверная часть (backend)
+        - веб-интерфейс (frontend)
+        - инфраструктура (CI, Docker)
+        - документация
