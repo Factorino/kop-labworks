@@ -1,0 +1,118 @@
+# --- Project metadata and dependencies ---------------------------------------
+#
+# Deliberately minimal: every tool that can keep its configuration in a file of
+# its own does so (.ruff.toml, .mypy.ini, .importlinter, .pytest.toml,
+# .coveragerc, .cz.toml). What remains here is what the packaging standard
+# requires plus the dependency groups.
+#
+# The package name appears in several other files as well; rename them together.
+# `grep -rlw kop --exclude-dir=.git --exclude-dir=.venv --exclude=uv.lock .`
+#
+# Recipes: `just sync`, `just lock`.
+
+
+# --- Build backend -----------------------------------------------------------
+# uv_build is the backend that ships with uv, so building requires no extra
+# dependency. The upper bound guards against a breaking change in the tool.
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+# The distribution is kop-labworks, but the importable package is src/kop;
+# without this uv_build would look for src/kop_labworks.
+
+[tool.uv.build-backend]
+module-name = "kop"
+
+
+# --- Core metadata -----------------------------------------------------------
+# `version` is written by `cz bump` (see version_files in .cz.toml); do not
+# edit it by hand. The version itself comes from the git tags.
+
+[project]
+name = "kop-labworks"
+version = "0.0.0"
+description = "Personal blog aggregator: publish a post once, deliver it to the web blog, Telegram and VK"
+requires-python = ">=3.12"
+
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+
+authors = [
+    { name = "Factorino", email = "masenkin73@gmail.com" },
+]
+
+# Purely informational for package indexes. Keep the Python versions in step
+# with the test matrix in CI.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",  # Backed by src/kop/py.typed.
+]
+
+# Runtime dependencies arrive together with the code that imports them, one
+# feature branch at a time. Development tooling belongs in the groups below.
+dependencies = []
+
+
+# --- Project URLs ------------------------------------------------------------
+
+[project.urls]
+Repository = "https://github.com/Factorino/kop-labworks"
+Changelog = "https://github.com/Factorino/kop-labworks/blob/master/CHANGELOG.md"
+
+
+# --- Dependency groups -------------------------------------------------------
+# Development dependencies, split by the job they serve, so that CI can install
+# only what a given job needs (`uv sync --no-default-groups --group ...`).
+# Leaf groups come first, aggregators last; `dev` closes the list and is what
+# a plain `uv sync` installs.
+
+[dependency-groups]
+
+# Type stubs for third-party packages. Needed because mypy runs with
+# ignore_missing_imports = False: a dependency without types must be handled
+# explicitly. Add stubs here as dependencies appear.
+types = []
+
+lint = [
+    "import-linter>=2.15",
+    "mypy>=2.3.1",
+    "ruff>=0.16.8",
+    { include-group = "types" },
+]
+
+test = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-randomly>=5.0.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+]
+
+# The git hooks and the release tooling. The commit message hook itself runs
+# from the commitizen repository (see .pre-commit-config.yaml); this copy is
+# for `just commit` and `just bump`.
+hooks = [
+    "pre-commit>=4.6.2",
+]
+
+release = [
+    "commitizen>=4.18.1",
+]
+
+# Everything a developer needs locally; installed by `just sync`.
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
+    { include-group = "hooks" },
+    { include-group = "release" },
+]

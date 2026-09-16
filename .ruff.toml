@@ -1,0 +1,236 @@
+# --- Ruff configuration ------------------------------------------------------
+#
+# Ruff is the only linter and formatter in this project. It replaces flake8,
+# isort, pyupgrade, bandit, pydocstyle and black, so none of those should be
+# added separately.
+#
+# Related files:
+#   - .mypy.ini                type checking, deliberately kept separate
+#   - .importlinter            the layer contract; ruff bans relative imports
+#                              below so that contract sees every import
+#   - .editorconfig            the same line length, for editors
+#
+# Recipes: `just lint`, `just fix`, `just check`.
+
+
+# --- Global settings ---------------------------------------------------------
+# Apply to both the linter and the formatter.
+
+target-version = "py312"  # Lowest supported version; see requires-python.
+line-length = 99
+indent-width = 4
+preview = false  # Preview rules are opt-in; keep the rule set reproducible.
+
+
+# --- File selection ----------------------------------------------------------
+# Paths that are not our source code. Everything else is linted, including
+# tests/ — relaxations for them live in per-file-ignores.
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+    "venv",
+    ".venv",
+]
+
+# Without this, exclude is ignored for paths passed explicitly on the command
+# line — which is exactly how editors and hooks invoke ruff.
+force-exclude = true
+
+
+# --- Lint rules --------------------------------------------------------------
+# Everything is enabled, then narrowed down. A new ruff release adds its rules
+# automatically, which is the point: opt out consciously, not by omission.
+
+[lint]
+select = ["ALL"]
+
+# Sorted alphabetically so the list stays searchable. Do not add rules that the
+# pydocstyle convention already disables (D203, D213, D401, D404, D405) — that
+# is dead configuration.
+ignore = [
+    "A002", "A003", "A005",  # Shadowing builtins is acceptable in narrow scopes.
+    "ANN401",  # `Any` is sometimes the honest annotation.
+    "ARG005",  # Unused lambda argument, common in callbacks.
+    "B024", "B027",  # Abstract base classes without abstract methods are valid.
+    "COM812",  # Conflicts with the formatter.
+    "CPY001",  # No copyright header per file.
+    "D100", "D104", "D105", "D106", "D107",  # Docstrings on modules, packages, magic methods.
+    "EM101", "EM102",  # String literals passed directly to exceptions.
+    "FBT001", "FBT002",  # Boolean positional arguments.
+    "FIX002",  # TODO comments are allowed to exist.
+    "G004",  # f-strings in logging calls.
+    "ISC001",  # Conflicts with the formatter.
+    "N818",  # Exception names need not end with "Error".
+    "PGH003", "PGH004",  # Blanket `type: ignore` and `noqa`.
+    "PLR0913", "PLR2004",  # Argument count and magic values.
+    "PTH123",  # `open()` instead of `Path.open()`.
+    "RET504",  # Assignment before return can aid readability.
+    "RUF001", "RUF002", "RUF003",  # Ambiguous unicode; this project uses Cyrillic text.
+    "TD002", "TD003",  # TODOs without author or issue link.
+    "TRY003",  # Long messages inside exception constructors.
+]
+
+fixable = ["ALL"]
+unfixable = []
+
+
+# --- Import sorting ----------------------------------------------------------
+# Replaces isort. `known-first-party` must be renamed together with the package.
+
+[lint.isort]
+known-first-party = ["kop"]
+combine-as-imports = true
+force-sort-within-sections = true
+no-lines-before = ["future", "standard-library"]
+lines-after-imports = 2
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+
+# --- Complexity --------------------------------------------------------------
+
+[lint.mccabe]
+max-complexity = 12
+
+
+# --- Line length details -----------------------------------------------------
+
+[lint.pycodestyle]
+# A long URL inside a TODO should not force an awkward line break.
+ignore-overlong-task-comments = true
+
+
+# --- Docstring style ---------------------------------------------------------
+# Setting a convention also disables the rules that contradict it, so those
+# must not appear in `ignore` above.
+
+[lint.pydocstyle]
+convention = "google"
+
+
+# --- Modernisation -----------------------------------------------------------
+
+[lint.pyupgrade]
+# Rewrite typing constructs to their modern form; nothing here targets an
+# older runtime than target-version.
+keep-runtime-typing = false
+
+
+# --- Annotations -------------------------------------------------------------
+
+[lint.flake8-annotations]
+allow-star-arg-any = true  # `*args: Any` and `**kwargs: Any` are acceptable.
+mypy-init-return = true  # `__init__` may omit `-> None` when it takes arguments.
+
+
+# --- Comprehensions ----------------------------------------------------------
+
+[lint.flake8-comprehensions]
+allow-dict-calls-with-keyword-arguments = false
+
+
+# --- Quotes ------------------------------------------------------------------
+# Must agree with `format.quote-style` below.
+
+[lint.flake8-quotes]
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"
+
+
+# --- Import hygiene ----------------------------------------------------------
+
+[lint.flake8-tidy-imports]
+# Absolute imports only: relative ones hide layer violations that
+# .importlinter is meant to catch.
+ban-relative-imports = "all"
+
+
+# --- Unused arguments --------------------------------------------------------
+
+[lint.flake8-unused-arguments]
+ignore-variadic-names = true
+
+
+# --- Per-path relaxations ----------------------------------------------------
+# Order: architectural layers, then tests, then plain filename patterns.
+#
+# Caution: `*` crosses `/` in these patterns. "src/kop/*.py" would match
+# nested files too, so there is no way to target a single directory level.
+
+[lint.per-file-ignores]
+# Docstrings on public classes, methods and functions are currently not
+# required anywhere. To make them mandatory in the business layers, comment
+# out the two lines below and leave the rest as they are.
+"src/kop/domain/**/*.py" = ["D101", "D102", "D103"]
+"src/kop/application/**/*.py" = ["D101", "D102", "D103"]
+
+# Adapters and the composition root: signatures are documentation enough.
+"src/kop/presentation/**/*.py" = ["D101", "D102", "D103"]
+"src/kop/infrastructure/**/*.py" = ["D101", "D102", "D103"]
+"src/kop/main/**/*.py" = ["D101", "D102", "D103"]
+
+# Tests assert, print and take unused fixture arguments by design.
+"tests/**/*.py" = [
+    "S101",  # `assert` is the whole point here.
+    "S105",  # Passwords and tokens in fixtures are deliberately fake.
+    "S106",
+    "T201",
+    "INP001",
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "ARG001",  # Fixtures are often requested but not referenced.
+    "ARG002",
+    "ARG003",
+    "PLR2004",
+    "PLR0913",
+    "ANN201",  # Matches the relaxations in [mypy-tests.*].
+    "ANN001",
+    "ANN401",
+]
+
+"conftest.py" = [
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "ARG001",  # pytest hooks receive arguments they may not use.
+]
+
+"__init__.py" = [
+    "F401",  # Re-exports are the purpose of a package __init__.
+    "F403",
+    "I001",
+    "E402",
+]
+
+"*.pyi" = [
+    "ANN201",
+    "ANN401",
+]
+
+
+# --- Formatter ---------------------------------------------------------------
+# Replaces black. `quote-style` must agree with [lint.flake8-quotes].
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false  # A trailing comma keeps one item per line.
+line-ending = "lf"  # Matches `* text=auto eol=lf` in .gitattributes.
+docstring-code-format = true  # Format code examples inside docstrings.
+docstring-code-line-length = 99

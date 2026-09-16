@@ -2,22 +2,59 @@
 
 ## Подготовка
 
-Git-хуки ставятся через [pre-commit], версии — через [commitizen]:
+Нужны [uv] и [just]. Python нужной версии (`.python-version`) uv скачает сам.
 
 ```bash
-uv tool install pre-commit
-uv tool install commitizen
-pre-commit install    # хуки pre-commit и commit-msg
+just sync     # зависимости из uv.lock в .venv
+just hooks    # git-хуки pre-commit, commit-msg и pre-push
 ```
 
-Хук `pre-commit` проверяет файлы (пробелы в конце строк, перевод строки в
-конце файла, окончания строк LF, синтаксис YAML/JSON/TOML, конфликты слияния,
-закрытые ключи). Хук `commit-msg` отклоняет коммит, сообщение которого не
-соответствует формату ниже. Проверить все файлы вручную:
-`pre-commit run --all-files`.
+| Хук | Когда | Что проверяет |
+| --- | --- | --- |
+| `pre-commit` | Перед коммитом | Гигиена файлов (пробелы и перевод строки в конце, LF, синтаксис YAML/JSON/TOML, конфликты слияния, закрытые ключи); ruff, mypy, import-linter; согласованность `uv.lock` с `pyproject.toml` |
+| `commit-msg` | После ввода сообщения | Формат сообщения коммита (ниже) |
+| `pre-push` | Перед отправкой | Тесты |
 
-Ветка `backend` дополняет хуки линтерами, проверкой типов и тестами; порядок
-работы с ними описан в её версии этого файла.
+## Команды
+
+| Команда | Что делает |
+| --- | --- |
+| `just check` | Линтеры, типы, контракт слоёв и тесты — то же, что в CI |
+| `just fix` | Автоисправления ruff и форматирование |
+| `just test` | Тесты; также `just test -m unit`, `just test tests/integration -x` |
+| `just cov` | Покрытие с порогом из `.coveragerc` |
+| `just pre-commit` | Все хуки по всем файлам |
+| `just lock` | Пересобрать `uv.lock` после правки `pyproject.toml` |
+| `just --list` | Все остальные команды |
+
+Зависимости добавляются через `uv add` (или `uv add --group <группа>`),
+`uv.lock` коммитится вместе с `pyproject.toml`.
+
+## Архитектура
+
+Пакет `src/kop` разделён на слои. Правило зависимостей проверяет import-linter
+(`.importlinter`) в составе `just check`:
+
+```text
+main  ->  presentation | infrastructure  ->  application  ->  domain
+```
+
+Зависимости направлены только вниз; `presentation` и `infrastructure` друг
+друга не импортируют. `domain` и `application` не импортируют фреймворки и
+драйверы. Назначение каждого слоя описано в его `__init__.py`.
+
+## Тесты
+
+| Каталог | Что допустимо |
+| --- | --- |
+| `tests/unit` | Только `domain` и `application`; без сети, базы данных и файловой системы |
+| `tests/integration` | Адаптеры инфраструктуры против реальных зависимостей |
+| `tests/e2e` | Приложение целиком через внешний интерфейс |
+
+Маркеры `unit`, `integration` и `e2e` ставятся автоматически по каталогу
+(`tests/conftest.py`), поэтому `-m "not e2e"` работает без ручной разметки.
+Порог покрытия в `.coveragerc` поднимается вместе с тестами каждой функции;
+целевое значение — 80 %.
 
 ## Коммиты
 
@@ -59,7 +96,7 @@ ci: run tests on python 3.13
 
 Сообщения коммитов пишутся на английском, в повелительном наклонении, со
 строчной буквы и без точки в конце. Формат можно не запоминать:
-`cz commit` спросит каждую часть по очереди.
+`just commit` спросит каждую часть по очереди.
 
 ## Ветки
 
@@ -103,11 +140,12 @@ Rebase and merge не используется.
 ```bash
 # 1. Узнать номер следующей версии
 git switch backend && git pull
-cz bump --dry-run
+just bump --dry-run
 
-# 2. Обновить CHANGELOG.md в отдельной ветке
+# 2. Обновить CHANGELOG.md и версию в pyproject.toml в отдельной ветке
 git switch -c release/vX.Y.Z
-cz bump --files-only --yes
+just bump --files-only --yes
+just lock             # версия проекта записана и в uv.lock
 git commit -am "bump: version A.B.C -> X.Y.Z"
 git push -u origin release/vX.Y.Z
 # PR release/vX.Y.Z -> backend, Squash and merge
@@ -124,13 +162,13 @@ git push origin vX.Y.Z
 ## Обновление хуков
 
 ```bash
-pre-commit autoupdate
+uv run pre-commit autoupdate
 ```
 
 После обновления `commitizen` в `.pre-commit-config.yaml` та же версия
 указывается в `COMMITIZEN_VERSION` в `.github/workflows/commits.yml`, чтобы
 хук и CI проверяли сообщения одинаково.
 
-[pre-commit]: https://pre-commit.com/
-[commitizen]: https://commitizen-tools.github.io/commitizen/
+[uv]: https://docs.astral.sh/uv/
+[just]: https://just.systems/
 [cc]: https://www.conventionalcommits.org/ru/v1.0.0/
