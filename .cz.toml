@@ -1,0 +1,48 @@
+# --- Commitizen configuration ------------------------------------------------
+#
+# Commit messages are the source of truth for both the changelog and the
+# version number, which is why the Conventional Commits format is enforced by
+# a hook and by CI rather than by convention alone.
+#
+# Related files:
+#   - .pre-commit-config.yaml         `cz check` runs on the commit-msg stage
+#   - .github/workflows/commits.yml   the same check for every pull request
+#   - CHANGELOG.md                    generated from the commit history
+#
+# The release procedure is described in CONTRIBUTING.md.
+#
+# Searched before pyproject.toml and package.json, which is why the
+# configuration lives here: it is shared by the backend and frontend branches.
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+
+
+# --- Versioning --------------------------------------------------------------
+# The version is read from git tags. This works on every branch regardless of
+# language: master has neither pyproject.toml nor package.json. A branch that
+# needs the version written into its own manifest adds it via version_files.
+
+version_provider = "scm"
+version_scheme = "semver"
+
+# While the project is on 0.x a breaking change bumps the minor version rather
+# than the major one. Remove when releasing 1.0.0.
+major_version_zero = true
+
+
+# --- Tag and commit ----------------------------------------------------------
+# The tag format must match the release trigger ("v*").
+
+tag_format = "v$version"
+annotated_tag = true
+bump_message = "bump: version $current_version -> $new_version"
+
+
+# --- Changelog ---------------------------------------------------------------
+# Incremental mode inserts new sections at the top and leaves the handwritten
+# header of CHANGELOG.md intact.
+
+changelog_file = "CHANGELOG.md"
+changelog_incremental = true
+update_changelog_on_bump = true

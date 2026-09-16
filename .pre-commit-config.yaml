@@ -1,0 +1,61 @@
+# --- Pre-commit hooks --------------------------------------------------------
+#
+# Language-independent hooks only, because this file is shared by the backend
+# and frontend branches. Nothing here needs uv or node: pre-commit builds an
+# isolated environment for each hook repository itself.
+#
+# The backend branch adds its linters as `repo: local` hooks running through
+# `uv run`, so that their versions come from uv.lock.
+#
+# Related files:
+#   - .cz.toml                        the commit message format checked below
+#   - .github/workflows/commits.yml   the same message check in CI; its
+#                                     COMMITIZEN_VERSION must match `rev` below
+#
+# Install: `pre-commit install` (see CONTRIBUTING.md).
+# Update: `pre-commit autoupdate`, then bump COMMITIZEN_VERSION in commits.yml.
+
+minimum_pre_commit_version: "4.0.0"
+
+
+# --- Installed stages --------------------------------------------------------
+# File checks run on commit, the message check on commit-msg.
+
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+
+repos:
+  # --- Generic file hygiene --------------------------------------------------
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files  # Default limit is 500 KB; uv.lock fits.
+      - id: check-case-conflict  # Names that collide on case-insensitive filesystems.
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]  # Matches `* text=auto eol=lf` in .gitattributes.
+      - id: trailing-whitespace
+        # Two trailing spaces in Markdown are a hard line break, not noise.
+        # The same exception is declared in .editorconfig.
+        args: [--markdown-linebreak-ext=md]
+
+  # --- Commit messages -------------------------------------------------------
+  # Conventional Commits are the source of both CHANGELOG.md and the next
+  # version number, so the format is verified rather than trusted. The hook
+  # comes from the commitizen repository itself, so it needs no project
+  # virtualenv and works the same on both branches.
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.18.1
+    hooks:
+      - id: commitizen
