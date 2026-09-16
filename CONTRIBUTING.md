@@ -131,6 +131,17 @@ ci: run tests on python 3.13
 
 Rebase and merge не используется.
 
+## Непрерывная интеграция
+
+| Workflow | Когда запускается | Что делает |
+| --- | --- | --- |
+| `commits.yml` | Pull request | Формат сообщений коммитов и заголовка PR |
+| `ci.yml` | Pull request; push в `master` и `backend`; вручную | `lint` — все хуки pre-commit; `test` — тесты на Python 3.12 и 3.13, отчёты JUnit и покрытия в артефактах; `security` — аудит зависимостей; `ci` — сводный результат |
+| `release.yml` | Тег `v*` | Сверка тега с версией пакета, сборка wheel и sdist, GitHub Release с разделом из `CHANGELOG.md` |
+| `metrics.yml` | Тег `v*`; вручную | Срез метрик версии в артефактах (`scripts/metrics.py`) |
+
+Обязательные проверки для слияния в `backend`: `commits` и `ci`.
+
 ## Выпуск версии
 
 Номер версии и раздел `CHANGELOG.md` вычисляются из сообщений коммитов с
@@ -142,11 +153,13 @@ Rebase and merge не используется.
 git switch backend && git pull
 just bump --dry-run
 
-# 2. Обновить CHANGELOG.md и версию в pyproject.toml в отдельной ветке
+# 2. Обновить CHANGELOG.md, версию и метрики в отдельной ветке
 git switch -c release/vX.Y.Z
 just bump --files-only --yes
 just lock             # версия проекта записана и в uv.lock
-git commit -am "bump: version A.B.C -> X.Y.Z"
+just metrics vX.Y.Z   # docs/metrics/vX.Y.Z.json и сводная таблица
+git add -A
+git commit -m "bump: version A.B.C -> X.Y.Z"
 git push -u origin release/vX.Y.Z
 # PR release/vX.Y.Z -> backend, Squash and merge
 
@@ -156,7 +169,9 @@ git tag -a vX.Y.Z -m "bump: version A.B.C -> X.Y.Z"
 git push origin vX.Y.Z
 ```
 
-Тег `v*` запускает публикацию релиза. Когда версия готова к выпуску целиком,
+Тег `v*` запускает публикацию релиза и повторный срез метрик в CI. Метрики
+снимаются до тега, на содержимом, которое затем получает тег: при squash-слиянии
+код не меняется. Когда версия готова к выпуску целиком,
 интеграционная ветка сливается в `master` через PR (Create a merge commit).
 
 ## Обновление хуков
