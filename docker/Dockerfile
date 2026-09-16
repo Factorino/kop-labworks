@@ -32,6 +32,17 @@ ENV \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=UTC
 
+# Debian security updates on top of the pinned base. The official image is
+# rebuilt only every few weeks, and fixes released in between would otherwise
+# fail the vulnerability scan in CI with nothing to do about them but wait.
+# The price is that two builds of the same commit may differ in patch levels
+# of system packages; the Python layer stays fully pinned.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 
 # --- Stage: build ------------------------------------------------------------
 # Resolves dependencies and builds the wheel. Nothing from this stage reaches
