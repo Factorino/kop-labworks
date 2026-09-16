@@ -141,6 +141,46 @@ jobs:
 
       - run: just audit
 
+  # --- Image build and scan --------------------------------------------------
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # just comes from uv so that no additional third-party action is needed.
+      - uses: astral-sh/setup-uv@v10.1.0  # No floating major tag upstream.
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install just
+        run: |
+          uv tool install rust-just
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      # Tests inside the image: covers both the build and the fact that the
+      # suite passes against the built wheel, next to the real dependencies.
+      - run: just test-container
+
+      - name: Build the runtime image
+        run: just build
+
+      # Pinned by commit rather than by tag: a tag can be moved, and the tags of
+      # this action have been hijacked before. ignore-unfixed: without it the
+      # build would fail on base image CVEs that have no patch yet.
+      - name: Scan the image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: kop-labworks:local
+          version: v0.74.0
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
   # --- Aggregate status ------------------------------------------------------
   # The single check worth requiring in branch protection: adding a new job
   # above will not require changing the repository settings, only `needs`.
@@ -148,7 +188,7 @@ jobs:
   ci:
     name: ci
     if: always()  # Must run even when a dependency failed.
-    needs: [lint, test, security]
+    needs: [lint, test, security, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
