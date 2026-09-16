@@ -1,29 +1,38 @@
 # --- Pre-commit hooks --------------------------------------------------------
 #
-# Language-independent hooks only, because this file is shared by the backend
-# and frontend branches. Nothing here needs uv or node: pre-commit builds an
-# isolated environment for each hook repository itself.
-#
-# The backend branch adds its linters as `repo: local` hooks running through
-# `uv run`, so that their versions come from uv.lock.
+# Two kinds of hooks. Language-independent ones come from upstream hook
+# repositories and are shared with the frontend branch. The backend tooling is
+# wired as `repo: local` running through `uv run`, not through mirrors such as
+# ruff-pre-commit: a mirror pins the tool version in its `rev:` field, in
+# parallel with uv.lock, and the two inevitably drift apart. This way the hooks,
+# `just` and CI provably use the same ruff and the same mypy.
 #
 # Related files:
+#   - .ruff.toml, .mypy.ini, .importlinter  configure the local hooks
 #   - .cz.toml                        the commit message format checked below
 #   - .github/workflows/commits.yml   the same message check in CI; its
 #                                     COMMITIZEN_VERSION must match `rev` below
 #
-# Install: `pre-commit install` (see CONTRIBUTING.md).
+# Install: `just hooks`. Run over everything: `just pre-commit`.
 # Update: `pre-commit autoupdate`, then bump COMMITIZEN_VERSION in commits.yml.
 
 minimum_pre_commit_version: "4.0.0"
 
 
 # --- Installed stages --------------------------------------------------------
-# File checks run on commit, the message check on commit-msg.
+# Cheap checks run on commit, the message check on commit-msg, and the test
+# suite on push.
 
 default_install_hook_types:
   - pre-commit
   - commit-msg
+  - pre-push
+
+# A hook that declares no stages of its own would otherwise run on every
+# installed stage, repeating all the linters on push. The commit message hook
+# declares commit-msg in its own manifest, pytest declares pre-push below.
+default_stages:
+  - pre-commit
 
 
 repos:
@@ -59,3 +68,62 @@ repos:
     rev: v4.18.1
     hooks:
       - id: commitizen
+
+  # --- Backend tooling -------------------------------------------------------
+  # `language: system` means the hook runs the tool from the project virtualenv
+  # instead of an isolated one, so versions come from uv.lock. This also avoids
+  # the classic mypy-in-pre-commit problem of not seeing project dependencies.
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # mypy and import-linter analyse the project as a whole; feeding them
+      # only the changed files would give wrong answers, hence
+      # pass_filenames: false. The directory list must match `just lint`.
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src tests
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+
+      - id: lint-imports
+        name: import-linter
+        entry: uv run lint-imports
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+
+      # uv.lock must stay in step with pyproject.toml, otherwise
+      # `uv sync --locked` fails for everyone else and in CI.
+      - id: uv-lock
+        name: uv lock
+        entry: uv lock
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+
+      # Running the suite on every commit is too slow; on push it is worth it,
+      # catching a break before it reaches CI.
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        stages: [pre-push]
