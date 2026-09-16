@@ -1,0 +1,81 @@
+# --- Development dependencies ------------------------------------------------
+#
+# Postgres, Redis and RabbitMQ for processes running on the host, published on
+# the loopback interface. The application stack cannot serve that purpose: its
+# databases sit on an internal network with no port on the host.
+#
+# A project of its own, so `just teardown` of the application stack leaves the
+# development data alone and the two never share a volume. The credentials are
+# written in the open: these services hold nothing and listen on 127.0.0.1.
+#
+# Related files:
+#   - .config/compose.env.example  DEV_* below
+#
+# Recipes: `just dev-up`, `just dev-down`.
+
+name: kop-labworks-dev
+
+
+x-security-defaults: &security-defaults
+  security_opt:
+    - no-new-privileges:true
+
+
+services:
+  dev-db-pg:
+    image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+    restart: unless-stopped
+    <<: *security-defaults
+    environment:
+      POSTGRES_USER: ${DEV_PG_USER:?DEV_PG_USER is required}
+      POSTGRES_DB: ${DEV_PG_DB:?DEV_PG_DB is required}
+      POSTGRES_PASSWORD: ${DEV_PG_PASSWORD:?DEV_PG_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${DEV_PG_PORT:-54320}:5432"
+    volumes:
+      - dev-db-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      test: ["CMD-SHELL", "pg_isready -U ${DEV_PG_USER} -d ${DEV_PG_DB}"]
+
+  dev-redis:
+    image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    restart: unless-stopped
+    <<: *security-defaults
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${DEV_REDIS_PORT:-56379}:6379"
+    volumes:
+      - dev-redis-data:/data
+    healthcheck:
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      test: ["CMD", "redis-cli", "ping"]
+
+  dev-rabbitmq:
+    image: rabbitmq:4.1-management-alpine@sha256:eb6736723c5d0831ab12d29e7a2b8ee1082f744370c2a784b50b84b3b4d6d030
+    restart: unless-stopped
+    <<: *security-defaults
+    environment:
+      RABBITMQ_DEFAULT_USER: ${DEV_RABBITMQ_USER:?DEV_RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${DEV_RABBITMQ_PASSWORD:?DEV_RABBITMQ_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${DEV_RABBITMQ_PORT:-56720}:5672"
+      - "127.0.0.1:${DEV_RABBITMQ_UI_PORT:-15673}:15672"
+    volumes:
+      - dev-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+
+
+volumes:
+  dev-db-pg-data:
+  dev-redis-data:
+  dev-rabbitmq-data:

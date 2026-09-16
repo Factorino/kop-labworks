@@ -1,0 +1,144 @@
+# --- Application stack -------------------------------------------------------
+#
+# The production-shaped stack: the infrastructure the application talks to,
+# and — as each process gets its code — the application processes themselves.
+# Meant for a single machine: local development, a demo host or a small
+# deployment.
+#
+# Requires `just init` first: the secrets it reads and the variables it
+# interpolates are generated from the templates under .secrets/ and .config/,
+# and none of them is tracked in git.
+#
+# Related files:
+#   - docker/docker-compose.dev.yml    the same services published on the host
+#   - docker/docker-compose.tests.yml  the test stack
+#   - .config/compose.env.example      the variables interpolated below
+#
+# Recipes: `just up`, `just down`, `just logs`, `just ps`, `just service`,
+# `just restart`, `just teardown`.
+
+name: kop-labworks
+
+
+# --- Shared fragments --------------------------------------------------------
+# YAML anchors merged into services below, so a change lands everywhere at
+# once. They are not services and Compose ignores the x- prefix.
+
+# Bounded log growth: without this, json-file logs fill the disk eventually.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+
+# Applies to every service: a process inside a container may never gain more
+# privileges than it started with, even through a setuid binary.
+x-security-defaults: &security-defaults
+  security_opt:
+    - no-new-privileges:true
+
+
+services:
+  # --- Infrastructure --------------------------------------------------------
+  #
+  # Note the two secret styles: Postgres reads its password from a file under
+  # /run/secrets, RabbitMQ from an environment variable — it supports nothing
+  # else. Prefer the file form wherever a service offers it.
+
+  app-db-pg:
+    image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+    restart: unless-stopped
+    <<: *security-defaults
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - source: app-pg-pwd
+        target: postgres_password
+    volumes:
+      - app-db-pg-data:/var/lib/postgresql/data
+    networks:
+      - app-backend-nw
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+    logging: *default-logging
+
+  # Sessions live here. AOF, so a restart does not sign everyone out.
+  app-redis:
+    image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    restart: unless-stopped
+    <<: *security-defaults
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - app-redis-data:/data
+    networks:
+      - app-backend-nw
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 5s
+      test: ["CMD", "redis-cli", "ping"]
+    logging: *default-logging
+
+  # Delivery tasks for the channel workers. The management UI is published on
+  # the loopback interface only: it is an administration console, not something
+  # to expose. Publishing a port needs a non-internal network, hence the second
+  # one.
+  app-rabbitmq:
+    image: rabbitmq:4.1-management-alpine@sha256:eb6736723c5d0831ab12d29e7a2b8ee1082f744370c2a784b50b84b3b4d6d030
+    restart: unless-stopped
+    <<: *security-defaults
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - app-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - app-backend-nw
+      - app-frontend-nw
+    ports:
+      - "127.0.0.1:${RABBITMQ_UI_PORT:-15672}:15672"
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 10s
+      start_period: 30s
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+    logging: *default-logging
+
+
+# --- Networks ----------------------------------------------------------------
+# Two networks rather than one: databases and brokers attach to the internal
+# one, which has no route out. Anything that must be reachable from outside
+# also joins the frontend network.
+
+networks:
+  app-frontend-nw:
+  app-backend-nw:
+    internal: true
+
+
+# --- Volumes -----------------------------------------------------------------
+# Named volumes survive `just down`; `just teardown` removes them.
+
+volumes:
+  app-db-pg-data:
+  app-redis-data:
+  app-rabbitmq-data:
+
+
+# --- Secrets -----------------------------------------------------------------
+# The source files are created by `just init` from .secrets/*.example. None of
+# them is tracked in git, and compose refuses to start a stack whose secret
+# file is missing.
+
+secrets:
+  app-pg-pwd:
+    file: ../.secrets/pg_pwd.txt
