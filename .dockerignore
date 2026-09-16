@@ -1,0 +1,63 @@
+# --- Docker build context exclusions -----------------------------------------
+#
+# Everything listed here is kept out of the build context sent to the daemon.
+# It is not a substitute for careful COPY instructions: docker/Dockerfile
+# copies only the files each stage needs. What this file protects against is
+# a slow context and, above all, secrets or local configuration reaching a
+# layer by accident.
+#
+# Note: this format has no inline comments — a comment occupies a whole line.
+
+
+# --- Local configuration and secrets -----------------------------------------
+.config/
+.secrets/
+**/.env
+**/.envrc
+
+
+# --- Environments, caches and build output -----------------------------------
+**/.venv
+**/__pycache__/
+**/*.py[codz]
+**/.*cache
+**/.coverage
+**/.coverage.*
+**/htmlcov/
+**/coverage.xml
+**/junit.xml
+**/build/
+**/dist/
+**/*.egg-info/
+**/node_modules/
+**/*.log
+var/
+
+
+# --- Tooling, docs and CI ----------------------------------------------------
+# Tracked in git, but never needed inside an image.
+.git/
+.github/
+.dockerignore
+.editorconfig
+.gitattributes
+.gitignore
+.pre-commit-config.yaml
+.cz.toml
+.changelog.md.j2
+.ruff.toml
+.mypy.ini
+.importlinter
+.python-version
+CHANGELOG.md
+CONTRIBUTING.md
+justfile
+docker/
+docs/
+scripts/
+frontend/
+
+
+# --- Agent instructions ------------------------------------------------------
+**/CLAUDE.md
+**/.claude/
