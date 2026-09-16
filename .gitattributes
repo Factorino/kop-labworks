@@ -56,4 +56,5 @@ docs/** linguist-documentation=true
 .editorconfig export-ignore
 .pre-commit-config.yaml export-ignore
 .cz.toml export-ignore
+.changelog.md.j2 export-ignore
 tests/ export-ignore
