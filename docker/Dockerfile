@@ -13,10 +13,10 @@
 # image runs (API, relay, workers) adds its entry point together with its code.
 #
 # Related files:
-#   - docker/docker-compose.tests.yml  runs the tests stage
-#   - .dockerignore                    what reaches the build context
-#   - .github/workflows/ci.yml         the `docker` job builds and scans it
-#   - .github/workflows/release.yml    pushes the runtime stage to GHCR
+#   - docker/docker-compose.testing.yml  runs the tests stage
+#   - .dockerignore                      what reaches the build context
+#   - .github/workflows/ci.yml           the `docker` job builds and scans it
+#   - .github/workflows/release.yml      pushes the runtime stage to GHCR
 #
 # Recipes: `just build`, `just test-container`.
 
@@ -87,8 +87,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # --- Stage: tests ------------------------------------------------------------
-# Runs the suite against the built wheel. Used by docker-compose.tests.yml and
-# by the `docker` job in CI.
+# Runs the suite against the built wheel. Used by docker-compose.testing.yml
+# and by the `docker` job in CI.
 
 FROM build AS tests
 

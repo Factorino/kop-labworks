@@ -22,13 +22,14 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # it compose would read docker/.env, and everything to fill in should be under
 # .config/. See .config/compose.env.example.
 #
-# The two modes of the application stack differ in the files and profiles
-# passed to compose; see the header of docker/docker-compose.yml.
+# The environments the stack runs in differ in the files and profiles passed
+# to compose; see the header of docker/docker-compose.yml. The names are the
+# values of the application's Environment setting.
 
 compose := "docker compose --env-file .config/compose.env -f docker/docker-compose.yml"
-compose_app := compose + " --profile app"
-compose_dev := compose + " -f docker/docker-compose.dev.yml"
-compose_tests := "docker compose -f docker/docker-compose.tests.yml"
+compose_local := compose + " -f docker/docker-compose.local.yml"
+compose_development := compose + " --profile app"
+compose_testing := "docker compose -f docker/docker-compose.testing.yml"
 image := "kop-labworks"
 
 
@@ -140,22 +141,25 @@ test-container:
     # a separate shell, so the trap would fire immediately, before `up`, and
     # the cleanup would never happen.
     set -euo pipefail
-    trap '{{ compose_tests }} down -v --remove-orphans' EXIT
-    {{ compose_tests }} up --build --abort-on-container-exit --exit-code-from tests
+    trap '{{ compose_testing }} down -v --remove-orphans' EXIT
+    {{ compose_testing }} up --build --abort-on-container-exit --exit-code-from tests
 
 
 # --- Container stack ---------------------------------------------------------
-# One interface for both modes of docker/docker-compose.yml. The first
-# argument is the mode, everything after it goes to compose as is — service
-# names and flags alike:
+# One interface for docker/docker-compose.yml in every environment it runs in.
+# The first argument is the environment, everything after it goes to compose
+# as is — service names and flags alike:
 #
-#   just up                    app mode, every service
-#   just up dev                dev mode: infrastructure on 127.0.0.1
-#   just up app postgresql     one service
-#   just logs dev rabbitmq
+#   just up                            local: infrastructure on 127.0.0.1
+#   just up development                infrastructure and application processes
+#   just up development postgresql     one service
+#   just logs local rabbitmq
 #
-# The mode comes first because both it and the service list are optional: in
-# `just up redis` there would be no telling a mode from a service.
+# The environment comes first because both it and the service list are
+# optional: in `just up redis` there would be no telling one from the other.
+#
+# `testing` has a stack of its own, see `test-container`; `staging` and
+# `production` are added once there is an application image to deploy.
 #
 # Requires `just init` first: the stack reads .config/compose.env and the
 # secrets under .secrets/, neither of which is in the repository.
@@ -164,46 +168,46 @@ test-container:
 # {{ args }}: interpolation joins them into one string and loses the quoting of
 # an argument such as --format '{{.Service}} {{.Status}}'.
 
-# The compose command for a mode; anything else is an error, not a silent default.
+# The compose command for an environment; anything else is an error, not a silent default.
 [private]
 [positional-arguments]
-_stack mode *command:
-    @{{ if mode == "app" { compose_app } else if mode == "dev" { compose_dev } else { error("mode must be `app` or `dev`, got `" + mode + "`") } }} "${@:2}"
+_stack env *command:
+    @{{ if env == "local" { compose_local } else if env == "development" { compose_development } else { error("environment must be `local` or `development`, got `" + env + "`") } }} "${@:2}"
 
-# Start services in the background and wait until they are healthy: `just up [app|dev] [service...]`.
+# Start services in the background and wait until they are healthy: `just up [local|development] [service...]`.
 [group('stack')]
 [positional-arguments]
-up mode="app" *args:
+up env="local" *args:
     @just _stack "$1" up -d --wait "${@:2}"
 
-# Stop services, keeping their containers: `just stop [app|dev] [service...]`.
+# Stop services, keeping their containers: `just stop [local|development] [service...]`.
 [group('stack')]
 [positional-arguments]
-stop mode="app" *args:
+stop env="local" *args:
     @just _stack "$1" stop "${@:2}"
 
-# Restart services: `just restart [app|dev] [service...]`.
+# Restart services: `just restart [local|development] [service...]`.
 [group('stack')]
 [positional-arguments]
-restart mode="app" *args:
+restart env="local" *args:
     @just _stack "$1" restart "${@:2}"
 
-# Remove the containers; volumes survive, `teardown` drops them: `just down [app|dev]`.
+# Remove the containers; volumes survive, `teardown` drops them: `just down [local|development]`.
 [group('stack')]
 [positional-arguments]
-down mode="app" *args:
+down env="local" *args:
     @just _stack "$1" down "${@:2}"
 
-# List the containers: `just ps [app|dev]`.
+# List the containers: `just ps [local|development]`.
 [group('stack')]
 [positional-arguments]
-ps mode="app" *args:
+ps env="local" *args:
     @just _stack "$1" ps "${@:2}"
 
-# Follow the logs: `just logs [app|dev] [service...]`.
+# Follow the logs: `just logs [local|development] [service...]`.
 [group('stack')]
 [positional-arguments]
-logs mode="app" *args:
+logs env="local" *args:
     @just _stack "$1" logs -f --tail=100 "${@:2}"
 
 # The fallbacks matter: `git describe` fails in a repository without commits.
@@ -240,11 +244,11 @@ metrics version *args:
 # --- Cleanup -----------------------------------------------------------------
 # Everything this deletes is regenerated on demand, so removing it is safe.
 
-# Remove the application and test stacks together with their volumes; both modes share one project.
+# Remove the application and test stacks together with their volumes; local and development share one project.
 [group('clean')]
 teardown:
-    {{ compose_app }} down -v --remove-orphans
-    {{ compose_tests }} down -v --remove-orphans
+    {{ compose_development }} down -v --remove-orphans
+    {{ compose_testing }} down -v --remove-orphans
 
 # Every tool cache and build artefact. Separate from `teardown`, so it works without Docker.
 [group('clean')]

@@ -1,12 +1,12 @@
-# --- Development mode --------------------------------------------------------
+# --- Local environment -------------------------------------------------------
 #
-# Merged on top of docker-compose.yml by `just up dev`. Publishes the
+# Merged on top of docker-compose.yml by `just up local`. Publishes the
 # infrastructure on the loopback interface, so application processes started
 # on the host can reach it. Nothing else changes: the same images, secrets,
-# volumes and credentials as the application stack.
+# volumes and credentials as in the development environment.
 #
 # A published port needs a network with a route out, so each service also
-# joins `frontend` here; in the app mode they stay on the internal network.
+# joins `frontend` here; in development they stay on the internal network.
 #
 # The host ports are not the defaults, so they do not collide with a
 # PostgreSQL, Redis or RabbitMQ already installed on the machine.

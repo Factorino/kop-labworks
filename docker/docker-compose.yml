@@ -1,24 +1,28 @@
 # --- Application stack -------------------------------------------------------
 #
-# One stack, two ways to run it (`just up [app|dev]`):
+# One stack for the environments of the application's Environment setting
+# (`just up [local|development]`):
 #
-#   app  everything in containers: the infrastructure plus the application
-#        processes, which carry `profiles: [app]` as they are added. Nothing
-#        but the API is published on the host.
-#   dev  this file merged with docker-compose.dev.yml: the infrastructure only,
-#        published on 127.0.0.1 for application processes run on the host.
+#   local        this file merged with docker-compose.local.yml: the
+#                infrastructure only, published on 127.0.0.1 for application
+#                processes run on the host.
+#   development  everything in containers: the infrastructure plus the
+#                application processes, which carry `profiles: [app]` as they
+#                are added. Nothing but the API is published on the host.
 #
-# Both modes are the same compose project, so they share containers and data:
+# Both are the same compose project, so they share containers and data:
 # switching from one to the other recreates what changed and keeps the volumes.
+# `testing` runs a separate, disposable stack; `staging` and `production` get
+# an override of their own once there is an application image to deploy.
 #
 # Requires `just init` first: the secrets it reads and the variables it
 # interpolates are generated from the templates under .secrets/ and .config/,
 # and none of them is tracked in git.
 #
 # Related files:
-#   - docker/docker-compose.dev.yml    ports for the dev mode
-#   - docker/docker-compose.tests.yml  the separate, disposable test stack
-#   - .config/compose.env.example      the variables interpolated below
+#   - docker/docker-compose.local.yml    ports for the local environment
+#   - docker/docker-compose.testing.yml  the disposable test stack
+#   - .config/compose.env.example        the variables interpolated below
 #
 # Recipes: `just up`, `just down`, `just stop`, `just restart`, `just ps`,
 # `just logs`, `just teardown`.
