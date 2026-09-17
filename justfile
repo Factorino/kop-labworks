@@ -145,7 +145,7 @@ test-container:
     {{ compose_testing }} up --build --abort-on-container-exit --exit-code-from tests
 
 
-# --- Container stack ---------------------------------------------------------
+# --- Docker ------------------------------------------------------------------
 # One interface for docker/docker-compose.yml in every environment it runs in.
 # The first argument is the environment, everything after it goes to compose
 # as is — service names and flags alike:
@@ -175,37 +175,37 @@ _stack env *command:
     @{{ if env == "local" { compose_local } else if env == "development" { compose_development } else { error("environment must be `local` or `development`, got `" + env + "`") } }} "${@:2}"
 
 # Start services in the background and wait until they are healthy: `just up [local|development] [service...]`.
-[group('stack')]
+[group('docker')]
 [positional-arguments]
 up env="local" *args:
     @just _stack "$1" up -d --wait "${@:2}"
 
 # Stop services, keeping their containers: `just stop [local|development] [service...]`.
-[group('stack')]
+[group('docker')]
 [positional-arguments]
 stop env="local" *args:
     @just _stack "$1" stop "${@:2}"
 
 # Restart services: `just restart [local|development] [service...]`.
-[group('stack')]
+[group('docker')]
 [positional-arguments]
 restart env="local" *args:
     @just _stack "$1" restart "${@:2}"
 
 # Remove the containers; volumes survive, `teardown` drops them: `just down [local|development]`.
-[group('stack')]
+[group('docker')]
 [positional-arguments]
 down env="local" *args:
     @just _stack "$1" down "${@:2}"
 
 # List the containers: `just ps [local|development]`.
-[group('stack')]
+[group('docker')]
 [positional-arguments]
 ps env="local" *args:
     @just _stack "$1" ps "${@:2}"
 
 # Follow the logs: `just logs [local|development] [service...]`.
-[group('stack')]
+[group('docker')]
 [positional-arguments]
 logs env="local" *args:
     @just _stack "$1" logs -f --tail=100 "${@:2}"
@@ -213,7 +213,7 @@ logs env="local" *args:
 # The fallbacks matter: `git describe` fails in a repository without commits.
 
 # Build the runtime image, stamping the OCI labels from git.
-[group('stack')]
+[group('docker')]
 build *args:
     docker build -f docker/Dockerfile --target runtime \
         --build-arg VERSION="$(git describe --tags --always 2>/dev/null || echo unknown)" \
