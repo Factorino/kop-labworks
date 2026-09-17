@@ -21,9 +21,13 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # `--env-file` names what compose interpolates into the stack files; without
 # it compose would read docker/.env, and everything to fill in should be under
 # .config/. See .config/compose.env.example.
+#
+# The two modes of the application stack differ in the files and profiles
+# passed to compose; see the header of docker/docker-compose.yml.
 
 compose := "docker compose --env-file .config/compose.env -f docker/docker-compose.yml"
-compose_dev := "docker compose --env-file .config/compose.env -f docker/docker-compose.dev.yml"
+compose_app := compose + " --profile app"
+compose_dev := compose + " -f docker/docker-compose.dev.yml"
 compose_tests := "docker compose -f docker/docker-compose.tests.yml"
 image := "kop-labworks"
 
@@ -137,15 +141,72 @@ test-container:
     # the cleanup would never happen.
     set -euo pipefail
     trap '{{ compose_tests }} down -v --remove-orphans' EXIT
-    {{ compose_tests }} up --build --abort-on-container-exit --exit-code-from app-tests
+    {{ compose_tests }} up --build --abort-on-container-exit --exit-code-from tests
 
 
 # --- Container stack ---------------------------------------------------------
-# Wraps docker/docker-compose.yml. Requires `just init` first: the stack reads
-# .config/compose.env and the secrets under .secrets/, neither of which is in
-# the repository.
+# One interface for both modes of docker/docker-compose.yml. The first
+# argument is the mode, everything after it goes to compose as is — service
+# names and flags alike:
+#
+#   just up                    app mode, every service
+#   just up dev                dev mode: infrastructure on 127.0.0.1
+#   just up app postgresql     one service
+#   just logs dev rabbitmq
+#
+# The mode comes first because both it and the service list are optional: in
+# `just up redis` there would be no telling a mode from a service.
+#
+# Requires `just init` first: the stack reads .config/compose.env and the
+# secrets under .secrets/, neither of which is in the repository.
 
-# The fallbacks matter: `git rev-parse` fails in a repository without commits.
+# Arguments travel as positional parameters ("$@") rather than through
+# {{ args }}: interpolation joins them into one string and loses the quoting of
+# an argument such as --format '{{.Service}} {{.Status}}'.
+
+# The compose command for a mode; anything else is an error, not a silent default.
+[private]
+[positional-arguments]
+_stack mode *command:
+    @{{ if mode == "app" { compose_app } else if mode == "dev" { compose_dev } else { error("mode must be `app` or `dev`, got `" + mode + "`") } }} "${@:2}"
+
+# Start services in the background and wait until they are healthy: `just up [app|dev] [service...]`.
+[group('stack')]
+[positional-arguments]
+up mode="app" *args:
+    @just _stack "$1" up -d --wait "${@:2}"
+
+# Stop services, keeping their containers: `just stop [app|dev] [service...]`.
+[group('stack')]
+[positional-arguments]
+stop mode="app" *args:
+    @just _stack "$1" stop "${@:2}"
+
+# Restart services: `just restart [app|dev] [service...]`.
+[group('stack')]
+[positional-arguments]
+restart mode="app" *args:
+    @just _stack "$1" restart "${@:2}"
+
+# Remove the containers; volumes survive, `teardown` drops them: `just down [app|dev]`.
+[group('stack')]
+[positional-arguments]
+down mode="app" *args:
+    @just _stack "$1" down "${@:2}"
+
+# List the containers: `just ps [app|dev]`.
+[group('stack')]
+[positional-arguments]
+ps mode="app" *args:
+    @just _stack "$1" ps "${@:2}"
+
+# Follow the logs: `just logs [app|dev] [service...]`.
+[group('stack')]
+[positional-arguments]
+logs mode="app" *args:
+    @just _stack "$1" logs -f --tail=100 "${@:2}"
+
+# The fallbacks matter: `git describe` fails in a repository without commits.
 
 # Build the runtime image, stamping the OCI labels from git.
 [group('stack')]
@@ -155,48 +216,6 @@ build *args:
         --build-arg VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
         --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         -t {{ image }}:local {{ args }} .
-
-# Start the stack in the background and wait until every service is healthy.
-[group('stack')]
-up *args:
-    {{ compose }} up -d --wait {{ args }}
-
-# Same as `up`, but for a single service: `just service app-db-pg`.
-[group('stack')]
-service name *args:
-    {{ compose }} up -d --wait {{ name }} {{ args }}
-
-[group('stack')]
-restart *args:
-    {{ compose }} restart {{ args }}
-
-[group('stack')]
-ps:
-    {{ compose }} ps
-
-[group('stack')]
-logs *args:
-    {{ compose }} logs -f --tail=100 {{ args }}
-
-# Stop the stack. Volumes survive; use `teardown` to drop them.
-[group('stack')]
-down *args:
-    {{ compose }} down {{ args }}
-
-
-# --- Development dependencies ------------------------------------------------
-# Postgres, Redis and RabbitMQ on 127.0.0.1 for processes run on the host.
-# Separate from the application stack, whose services have no port on the host.
-
-# Start the development dependencies and wait until they are healthy.
-[group('dev')]
-dev-up:
-    {{ compose_dev }} up -d --wait
-
-# Stop the development dependencies; add `-v` to drop their data as well.
-[group('dev')]
-dev-down *args:
-    {{ compose_dev }} down {{ args }}
 
 
 # --- Version and changelog ---------------------------------------------------
@@ -221,10 +240,10 @@ metrics version *args:
 # --- Cleanup -----------------------------------------------------------------
 # Everything this deletes is regenerated on demand, so removing it is safe.
 
-# Remove the application and test stacks together with their volumes.
+# Remove the application and test stacks together with their volumes; both modes share one project.
 [group('clean')]
 teardown:
-    {{ compose }} down -v --remove-orphans
+    {{ compose_app }} down -v --remove-orphans
     {{ compose_tests }} down -v --remove-orphans
 
 # Every tool cache and build artefact. Separate from `teardown`, so it works without Docker.

@@ -4,14 +4,10 @@
 # against src/, next to disposable counterparts of the infrastructure. This is
 # what the `docker` job in CI executes, so a failure here is a failure there.
 #
-# Separate from docker-compose.yml on purpose: a different project name means
-# the two stacks never collide, and the dependencies are throwaway — their data
-# lives in tmpfs and disappears with the container, and their credentials are
-# written in the open.
-#
-# No application configuration is mounted, and none is meant to be: the tests
-# that need one build it themselves, so the suite cannot pass or fail because
-# of a file a developer happens to have edited.
+# A project of its own on purpose: it never touches the containers or volumes
+# of the application stack, its data lives in tmpfs and disappears with the
+# container, and its credentials are written in the open. For the same reason
+# it reads nothing from .config/ or .secrets/ and runs without `just init`.
 #
 # Related files:
 #   - docker/Dockerfile        the `tests` stage this builds
@@ -29,7 +25,7 @@ x-healthcheck-fast: &healthcheck-fast
 
 
 services:
-  app-tests:
+  tests:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -43,22 +39,19 @@ services:
 
     # The suite waits for its dependencies instead of racing them.
     depends_on:
-      app-db-pg-tests:
+      postgresql:
         condition: service_healthy
-      app-redis-tests:
+      redis:
         condition: service_healthy
-      app-rabbitmq-tests:
+      rabbitmq:
         condition: service_healthy
-
-    networks:
-      - app-tests-nw
 
   # --- Disposable dependencies -----------------------------------------------
   # The same images as docker-compose.yml, with two differences: data lives in
   # tmpfs rather than a volume, and health checks poll far more often so a run
   # is not spent waiting.
 
-  app-db-pg-tests:
+  postgresql:
     image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
     environment:
       POSTGRES_USER: kop
@@ -66,38 +59,25 @@ services:
       POSTGRES_PASSWORD: tests-only
     tmpfs:
       - /var/lib/postgresql/data
-    networks:
-      - app-tests-nw
     healthcheck:
       <<: *healthcheck-fast
       test: ["CMD-SHELL", "pg_isready -U kop -d kop_tests"]
 
-  app-redis-tests:
+  redis:
     image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     tmpfs:
       - /data
-    networks:
-      - app-tests-nw
     healthcheck:
       <<: *healthcheck-fast
       test: ["CMD", "redis-cli", "ping"]
 
-  app-rabbitmq-tests:
+  rabbitmq:
     image: rabbitmq:4.1-management-alpine@sha256:eb6736723c5d0831ab12d29e7a2b8ee1082f744370c2a784b50b84b3b4d6d030
     environment:
       RABBITMQ_DEFAULT_USER: kop
       RABBITMQ_DEFAULT_PASS: tests-only
     tmpfs:
       - /var/lib/rabbitmq
-    networks:
-      - app-tests-nw
     healthcheck:
       <<: *healthcheck-fast
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
-
-
-# --- Network -----------------------------------------------------------------
-# One network, isolated from the application stack.
-
-networks:
-  app-tests-nw:

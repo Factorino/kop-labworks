@@ -1,21 +1,27 @@
 # --- Application stack -------------------------------------------------------
 #
-# The production-shaped stack: the infrastructure the application talks to,
-# and — as each process gets its code — the application processes themselves.
-# Meant for a single machine: local development, a demo host or a small
-# deployment.
+# One stack, two ways to run it (`just up [app|dev]`):
+#
+#   app  everything in containers: the infrastructure plus the application
+#        processes, which carry `profiles: [app]` as they are added. Nothing
+#        but the API is published on the host.
+#   dev  this file merged with docker-compose.dev.yml: the infrastructure only,
+#        published on 127.0.0.1 for application processes run on the host.
+#
+# Both modes are the same compose project, so they share containers and data:
+# switching from one to the other recreates what changed and keeps the volumes.
 #
 # Requires `just init` first: the secrets it reads and the variables it
 # interpolates are generated from the templates under .secrets/ and .config/,
 # and none of them is tracked in git.
 #
 # Related files:
-#   - docker/docker-compose.dev.yml    the same services published on the host
-#   - docker/docker-compose.tests.yml  the test stack
+#   - docker/docker-compose.dev.yml    ports for the dev mode
+#   - docker/docker-compose.tests.yml  the separate, disposable test stack
 #   - .config/compose.env.example      the variables interpolated below
 #
-# Recipes: `just up`, `just down`, `just logs`, `just ps`, `just service`,
-# `just restart`, `just teardown`.
+# Recipes: `just up`, `just down`, `just stop`, `just restart`, `just ps`,
+# `just logs`, `just teardown`.
 
 name: kop-labworks
 
@@ -47,11 +53,11 @@ x-security-defaults: &security-defaults
 services:
   # --- Infrastructure --------------------------------------------------------
   #
-  # Note the two secret styles: Postgres reads its password from a file under
+  # Note the two secret styles: PostgreSQL reads its password from a file under
   # /run/secrets, RabbitMQ from an environment variable — it supports nothing
   # else. Prefer the file form wherever a service offers it.
 
-  app-db-pg:
+  postgresql:
     image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
     restart: unless-stopped
     <<: *security-defaults
@@ -60,12 +66,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:
-      - source: app-pg-pwd
+      - source: postgres-password
         target: postgres_password
     volumes:
-      - app-db-pg-data:/var/lib/postgresql/data
+      - postgresql-data:/var/lib/postgresql/data
     networks:
-      - app-backend-nw
+      - backend
     healthcheck:
       <<: *healthcheck-defaults
       interval: 5s
@@ -73,26 +79,23 @@ services:
     logging: *default-logging
 
   # Sessions live here. AOF, so a restart does not sign everyone out.
-  app-redis:
+  redis:
     image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     restart: unless-stopped
     <<: *security-defaults
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - app-redis-data:/data
+      - redis-data:/data
     networks:
-      - app-backend-nw
+      - backend
     healthcheck:
       <<: *healthcheck-defaults
       interval: 5s
       test: ["CMD", "redis-cli", "ping"]
     logging: *default-logging
 
-  # Delivery tasks for the channel workers. The management UI is published on
-  # the loopback interface only: it is an administration console, not something
-  # to expose. Publishing a port needs a non-internal network, hence the second
-  # one.
-  app-rabbitmq:
+  # Delivery tasks for the channel workers.
+  rabbitmq:
     image: rabbitmq:4.1-management-alpine@sha256:eb6736723c5d0831ab12d29e7a2b8ee1082f744370c2a784b50b84b3b4d6d030
     restart: unless-stopped
     <<: *security-defaults
@@ -100,12 +103,9 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
     volumes:
-      - app-rabbitmq-data:/var/lib/rabbitmq
+      - rabbitmq-data:/var/lib/rabbitmq
     networks:
-      - app-backend-nw
-      - app-frontend-nw
-    ports:
-      - "127.0.0.1:${RABBITMQ_UI_PORT:-15672}:15672"
+      - backend
     healthcheck:
       <<: *healthcheck-defaults
       interval: 10s
@@ -115,13 +115,13 @@ services:
 
 
 # --- Networks ----------------------------------------------------------------
-# Two networks rather than one: databases and brokers attach to the internal
-# one, which has no route out. Anything that must be reachable from outside
-# also joins the frontend network.
+# Two networks rather than one: the infrastructure attaches to the internal
+# one, which has no route out and cannot publish ports. Whatever must be
+# reachable from outside also joins `frontend`.
 
 networks:
-  app-frontend-nw:
-  app-backend-nw:
+  frontend:
+  backend:
     internal: true
 
 
@@ -129,9 +129,9 @@ networks:
 # Named volumes survive `just down`; `just teardown` removes them.
 
 volumes:
-  app-db-pg-data:
-  app-redis-data:
-  app-rabbitmq-data:
+  postgresql-data:
+  redis-data:
+  rabbitmq-data:
 
 
 # --- Secrets -----------------------------------------------------------------
@@ -140,5 +140,5 @@ volumes:
 # file is missing.
 
 secrets:
-  app-pg-pwd:
+  postgres-password:
     file: ../.secrets/pg_pwd.txt
