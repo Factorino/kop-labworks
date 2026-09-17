@@ -133,6 +133,23 @@ cov *args:
 test-report *args:
     uv run pytest --cov --cov-report=term --cov-report=xml --cov-report=html --junitxml=junit.xml {{ args }}
 
+# The database is created in the local stack's PostgreSQL next to the
+# application's own, and never shares its data. Use it as
+# `eval "$(just test-db)"`, then `just test`.
+
+# Create the test database in the local stack and print the variable that points the suite at it.
+[group('test')]
+test-db:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source .config/compose.env
+    # Idempotent: the database is created only when it does not exist yet.
+    {{ compose_local }} exec -T postgresql sh -c \
+        'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '"'"'kop_tests'"'"'" | grep -q 1 || createdb -U "$POSTGRES_USER" kop_tests' >&2
+    # Percent-encoded: the password may contain characters that end a URL part.
+    password="$(uv run python -c 'import urllib.parse; print(urllib.parse.quote(open(".secrets/pg_pwd.txt").read().strip(), safe=""))')"
+    echo "export KOP_TEST_DATABASE_URL='postgresql+psycopg://${POSTGRES_USER}:${password}@127.0.0.1:${POSTGRES_PORT}/kop_tests'"
+
 # Run the tests inside the image next to disposable dependencies, then remove them.
 [group('test')]
 test-container:
@@ -151,7 +168,8 @@ test-container:
 # as is — service names and flags alike:
 #
 #   just up                            local: infrastructure on 127.0.0.1
-#   just up development                infrastructure and application processes
+#   just up development                infrastructure and application processes,
+#                                      the image rebuilt from the working tree
 #   just up development postgresql     one service
 #   just logs local rabbitmq
 #
@@ -168,17 +186,43 @@ test-container:
 # {{ args }}: interpolation joins them into one string and loses the quoting of
 # an argument such as --format '{{.Service}} {{.Status}}'.
 
+# In `local` the application processes run on the host, so naming one of them
+# is refused: compose would otherwise start a service outside its profile just
+# because it was named, and the same process would run twice.
+
 # The compose command for an environment; anything else is an error, not a silent default.
 [private]
 [positional-arguments]
 _stack env *command:
-    @{{ if env == "local" { compose_local } else if env == "development" { compose_development } else { error("environment must be `local` or `development`, got `" + env + "`") } }} "${@:2}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    compose=({{ if env == "local" { compose_local } else if env == "development" { compose_development } else { error("environment must be `local` or `development`, got `" + env + "`") } }})
+    shift
+    if [[ "{{ env }}" == "local" ]]; then
+        app_only="$(comm -23 \
+            <({{ compose }} --profile app config --services | sort) \
+            <({{ compose }} config --services | sort))"
+        for arg in "$@"; do
+            if grep -qxF -- "${arg}" <<< "${app_only}"; then
+                echo "error: '${arg}' runs on the host in the local environment: use 'just run ${arg}'," >&2
+                echo "       or 'just up development ${arg}' to run it in a container" >&2
+                exit 1
+            fi
+        done
+        # Coming from development, its application containers would still hold
+        # the ports the same processes need on the host.
+        if [[ "${1:-}" == "up" && -n "${app_only}" ]]; then
+            # shellcheck disable=SC2086
+            {{ compose_development }} rm --stop --force ${app_only} > /dev/null 2>&1
+        fi
+    fi
+    "${compose[@]}" "$@"
 
 # Start services in the background and wait until they are healthy: `just up [local|development] [service...]`.
 [group('docker')]
 [positional-arguments]
 up env="local" *args:
-    @just _stack "$1" up -d --wait "${@:2}"
+    @just _stack "$1" up -d --wait {{ if env == "development" { "--build" } else { "" } }} "${@:2}"
 
 # Stop services, keeping their containers: `just stop [local|development] [service...]`.
 [group('docker')]
@@ -220,6 +264,34 @@ build *args:
         --build-arg VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
         --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         -t {{ image }}:local {{ args }} .
+
+
+# --- Processes on the host ---------------------------------------------------
+# The local environment: application processes run from the working tree, read
+# .config/local.toml and reach the infrastructure `just up` publishes. Their
+# names are the same as the services in docker/docker-compose.yml.
+
+# Start processes from the Procfile in one terminal, all or those named: `just run`, `just run api`.
+[group('run')]
+[positional-arguments]
+run *processes:
+    uv run honcho start "$@"
+
+# Apply every pending migration.
+[group('run')]
+migrate:
+    uv run kop-cli db upgrade
+
+# Autogenerate a revision from the models: `just revision "add posts"`.
+[group('run')]
+revision message:
+    uv run kop-cli db revision -m "{{ message }}"
+
+# Any operator command: `just cli db current`, `just cli --help`.
+[group('run')]
+[positional-arguments]
+cli *args:
+    uv run kop-cli "$@"
 
 
 # --- Version and changelog ---------------------------------------------------

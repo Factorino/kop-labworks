@@ -52,6 +52,7 @@ var/
 CHANGELOG.md
 CONTRIBUTING.md
 justfile
+Procfile
 docker/
 docs/
 scripts/

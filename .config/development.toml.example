@@ -1,0 +1,73 @@
+# --- Development configuration (template) ------------------------------------
+#
+# Copied to .config/development.toml by `just init`. Ignored by git — only
+# this *.example template is tracked.
+#
+# The profile of the `development` environment: every process runs in a
+# container (`just up development`). docker/docker-compose.yml mounts this file
+# read-only and names it in CONFIG_FILE; the image itself carries no
+# configuration, which is what lets one image run in every environment.
+#
+# Every path below is a path *inside the container*: /run/secrets is where
+# Docker mounts a secret.
+#
+# Related files:
+#   - .config/local.toml.example   the same settings for processes on the host
+#   - .config/compose.env.example  the credentials the containers start with
+#
+# Recipes: `just up development`, `just logs development api`.
+
+
+# --- Service -----------------------------------------------------------------
+
+[service]
+environment = "development"
+debug = false
+
+
+# --- Server ------------------------------------------------------------------
+# Every interface, because inside a container there is nothing else to bind.
+# The port is the container side of the mapping in docker-compose.yml.
+
+[server]
+host = "0.0.0.0"
+port = 8000
+workers = 1
+reload = false
+
+
+# --- API ---------------------------------------------------------------------
+# Documentation is on: this is a development environment. A deployment reachable
+# from outside turns it off, since it lists every route and schema.
+
+[api]
+docs_enabled = true
+
+
+# --- Logging -----------------------------------------------------------------
+# JSON on stdout, the stream a container platform collects.
+
+[logging]
+level = "INFO"
+json_format = true
+
+
+# --- Tracing -----------------------------------------------------------------
+
+[tracing]
+header = "X-Trace-Id"
+required = false
+
+
+# --- Database ----------------------------------------------------------------
+# The host is the service name in docker/docker-compose.yml. `database` and
+# `username` must agree with POSTGRES_DB and POSTGRES_USER in
+# .config/compose.env; the password arrives as a mounted secret.
+
+[database]
+host = "postgresql"
+port = 5432
+database = "kop"
+username = "kop"
+password_file = "/run/secrets/postgres_password"
+echo = false

@@ -9,8 +9,10 @@
 # the same commit a month later produces a different image. The human-readable
 # tag is kept next to the digest; when both are present Docker uses the digest.
 #
-# The runtime stage has no CMD, EXPOSE or HEALTHCHECK yet: each process the
-# image runs (API, relay, workers) adds its entry point together with its code.
+# One image, several processes: the API is the default command, the others
+# (migrations now, the relay and the workers later) override it. Health checks
+# differ per process, so they live next to each service in compose rather than
+# in the image.
 #
 # Related files:
 #   - docker/docker-compose.testing.yml  runs the tests stage
@@ -154,3 +156,9 @@ LABEL org.opencontainers.image.title="kop-labworks" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}"
+
+# Documentation for whoever runs the image: publishing is still up to `ports`
+# in compose or to `-p`. Must agree with `server.port` in the configuration.
+EXPOSE 8000
+
+CMD ["kop-api"]
