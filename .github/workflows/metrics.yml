@@ -38,6 +38,24 @@ jobs:
     name: metrics
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # The metrics run the whole suite, integration tests included (see ci.yml).
+    services:
+      postgresql:
+        image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+        env:
+          POSTGRES_USER: kop
+          POSTGRES_PASSWORD: tests-only
+          POSTGRES_DB: kop_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kop -d kop_tests"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      KOP_TEST_DATABASE_URL: postgresql+psycopg://kop:tests-only@localhost:5432/kop_tests
     steps:
       # Full history and tags: M5 counts commits since the previous version.
       - uses: actions/checkout@v7
