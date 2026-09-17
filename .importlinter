@@ -6,6 +6,7 @@
 #
 # Related files:
 #   - .ruff.toml               bans relative imports, which would hide violations
+#   - scripts/import_contracts.py  the allow-list contract type used below
 #
 # Recipes: `just lint`, `just check`.
 #
@@ -13,9 +14,12 @@
 
 [importlinter]
 root_package = kop
-# Required by the forbidden contracts below: without it third-party packages
-# are not part of the graph, and a contract naming one cannot see it imported.
+# Required by the allow-list contracts below: without it external packages are
+# not part of the graph, and an import of one cannot be seen at all.
 include_external_packages = True
+# Resolved from the repository root, which Import Linter puts on sys.path.
+contract_types =
+    allowed_external_imports: scripts.import_contracts.AllowedExternalImportsContract
 
 
 # --- Layer contract ----------------------------------------------------------
@@ -47,51 +51,28 @@ layers =
 # The layer contract only orders our own packages; it has nothing to say about
 # a domain entity importing SQLAlchemy. These two close that gap.
 #
-# The domain imports no third-party package that does I/O, validation or
-# wiring. The application may use pydantic for its DTOs, but never a driver, a
-# web framework or the container.
-#
-# The lists name the packages the project is planned to depend on, so that the
-# contracts hold from the first commit that brings one in.
+# Allow-lists rather than deny-lists: the standard library is always allowed,
+# every other external package only when named here. A new dependency is
+# therefore off limits to the core until someone decides otherwise — nothing
+# has to remember to forbid it.
 
+# Entities and rules: the standard library, plus typing backports.
 [importlinter:contract:domain-purity]
-name = Domain imports no frameworks
-type = forbidden
+name = Domain imports only the standard library
+type = allowed_external_imports
 source_modules =
     kop.domain
-forbidden_modules =
-    adaptix
-    aio_pika
-    alembic
-    bcrypt
-    dishka
-    fastapi
-    httpx
-    psycopg
-    pydantic
-    pydantic_settings
-    redis
-    sqlalchemy
-    starlette
-    structlog
-    typer
-    uvicorn
+allowed_modules =
+    typing_extensions
 
+# Use cases: pydantic for DTOs and structlog for logging, never a driver, a web
+# framework or the container.
 [importlinter:contract:application-purity]
-name = Application imports no drivers or transports
-type = forbidden
+name = Application imports only the standard library, pydantic and structlog
+type = allowed_external_imports
 source_modules =
     kop.application
-forbidden_modules =
-    aio_pika
-    alembic
-    bcrypt
-    dishka
-    fastapi
-    httpx
-    psycopg
-    redis
-    sqlalchemy
-    starlette
-    typer
-    uvicorn
+allowed_modules =
+    pydantic
+    structlog
+    typing_extensions

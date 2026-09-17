@@ -63,9 +63,14 @@ dependencies = []
 
 
 # --- Project URLs ------------------------------------------------------------
+# Shown on the package page. Links point at master, the branch of released
+# versions.
 
 [project.urls]
+Homepage = "https://github.com/Factorino/kop-labworks"
 Repository = "https://github.com/Factorino/kop-labworks"
+Issues = "https://github.com/Factorino/kop-labworks/issues"
+Documentation = "https://github.com/Factorino/kop-labworks#readme"
 Changelog = "https://github.com/Factorino/kop-labworks/blob/master/CHANGELOG.md"
 
 
