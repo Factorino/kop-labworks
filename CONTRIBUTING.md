@@ -40,8 +40,13 @@ main  ->  presentation | infrastructure  ->  application  ->  domain
 ```
 
 Зависимости направлены только вниз; `presentation` и `infrastructure` друг
-друга не импортируют. `domain` и `application` не импортируют фреймворки и
-драйверы. Назначение каждого слоя описано в его `__init__.py`.
+друга не импортируют. Назначение каждого слоя описано в его `__init__.py`.
+
+Внешние импорты `domain` и `application` ограничены белым списком: стандартная
+библиотека разрешена всегда, остальные пакеты — только перечисленные в
+`.importlinter` (`domain` — `typing_extensions`; `application` — ещё `pydantic`
+и `structlog`). Новая зависимость недоступна этим слоям, пока её явно не
+добавят в список. Тип контракта реализован в `scripts/import_contracts.py`.
 
 ## Тесты
 
