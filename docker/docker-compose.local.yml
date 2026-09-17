@@ -1,0 +1,41 @@
+# --- Local environment -------------------------------------------------------
+#
+# Merged on top of docker-compose.yml by `just up local`. Publishes the
+# infrastructure on the loopback interface, so application processes started
+# on the host can reach it. Nothing else changes: the same images, secrets,
+# volumes and credentials as in the development environment.
+#
+# A published port needs a network with a route out, so each service also
+# joins `frontend` here; in development they stay on the internal network.
+#
+# The host ports are not the defaults, so they do not collide with a
+# PostgreSQL, Redis or RabbitMQ already installed on the machine.
+#
+# Related files:
+#   - docker/docker-compose.yml    the stack this extends
+#   - .config/compose.env.example  the *_PORT variables below
+
+services:
+  postgresql:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-54320}:5432"
+    networks:
+      - backend
+      - frontend
+
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-56379}:6379"
+    networks:
+      - backend
+      - frontend
+
+  # The management UI is published only here: it is an administration console
+  # for development, not something the application stack exposes.
+  rabbitmq:
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-56720}:5672"
+      - "127.0.0.1:${RABBITMQ_UI_PORT:-15672}:15672"
+    networks:
+      - backend
+      - frontend

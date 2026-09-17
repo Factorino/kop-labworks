@@ -30,6 +30,45 @@ just hooks    # git-хуки pre-commit, commit-msg и pre-push
 Зависимости добавляются через `uv add` (или `uv add --group <группа>`),
 `uv.lock` коммитится вместе с `pyproject.toml`.
 
+## Docker
+
+`just init` создаёт `.config/compose.env` и `.secrets/*` из шаблонов
+`*.example` и не перезаписывает существующие файлы. Значения `change-me`
+заменяются перед первым запуском; сами файлы в git не попадают.
+
+Окружения совпадают со значениями настройки `Environment` приложения.
+
+| Окружение | Где работают процессы приложения | Compose |
+| --- | --- | --- |
+| `local` | На хосте; в контейнерах только инфраструктура с портами на `127.0.0.1` | `docker-compose.yml` + `docker-compose.local.yml` |
+| `development` | В контейнерах вместе с инфраструктурой | `docker-compose.yml`, профиль `app` |
+| `testing` | В контейнере тестов рядом с временной инфраструктурой | `docker-compose.testing.yml`, отдельный проект |
+| `staging`, `production` | Появятся вместе с образом, который есть что развернуть | — |
+
+`local` и `development` — один compose-проект: контейнеры и данные общие,
+переключение пересоздаёт только изменившиеся контейнеры.
+
+Окружение — первый аргумент команды, по умолчанию `local`; всё после него
+передаётся docker compose как есть: имена сервисов и флаги.
+
+| Команда | Что делает |
+| --- | --- |
+| `just up [local\|development] [сервис...]` | Запуск в фоне с ожиданием готовности: `just up`, `just up development postgresql` |
+| `just stop`, `just restart` | Остановка и перезапуск: `just restart local rabbitmq` |
+| `just logs`, `just ps` | Журналы и список контейнеров: `just logs local redis` |
+| `just down [local\|development]` | Удаление контейнеров; тома сохраняются |
+| `just teardown` | Стек приложения и тестовый стек вместе с томами |
+| `just build` | Runtime-образ `kop-labworks:local` с метками версии и коммита |
+| `just test-container` | Окружение `testing`: тесты в образе рядом с временными PostgreSQL, Redis и RabbitMQ; после прогона всё удаляется |
+
+`just test` запускает тесты на хосте и контейнеров не требует, пока тесты не
+обращаются к инфраструктуре. Тестам, которым она нужна, перед запуском на
+хосте нужен `just up`; `just test-container` поднимает свои временные копии
+сам и не зависит ни от `.config/`, ни от данных стека.
+
+Базовые образы закреплены по digest; поверх базового образа ставятся
+обновления безопасности Debian.
+
 ## Архитектура
 
 Пакет `src/kop` разделён на слои. Правило зависимостей проверяет import-linter
@@ -136,8 +175,8 @@ Rebase and merge не используется.
 | Workflow | Когда запускается | Что делает |
 | --- | --- | --- |
 | `commits.yml` | Pull request | Формат сообщений коммитов и заголовка PR |
-| `ci.yml` | Pull request; push в `master` и `backend`; вручную | `lint` — все хуки pre-commit; `test` — тесты на Python 3.12 и 3.13, отчёты JUnit и покрытия в артефактах; `security` — аудит зависимостей; `ci` — сводный результат |
-| `release.yml` | Тег `v*` | Сверка тега с версией пакета, сборка wheel и sdist, GitHub Release с разделом из `CHANGELOG.md` |
+| `ci.yml` | Pull request; push в `master` и `backend`; вручную | `lint` — все хуки pre-commit; `test` — тесты на Python 3.12 и 3.13, отчёты JUnit и покрытия в артефактах; `security` — аудит зависимостей; `docker` — тесты в образе, сборка runtime-образа и проверка trivy; `ci` — сводный результат |
+| `release.yml` | Тег `v*` | Сверка тега с версией пакета, сборка wheel и sdist, GitHub Release с разделом из `CHANGELOG.md`; образ в GHCR с тегами версии, `major.minor` и коммита |
 | `metrics.yml` | Тег `v*`; вручную | Срез метрик версии в артефактах (`scripts/metrics.py`) |
 
 Обязательные проверки для слияния в `backend`: `commits` и `ci`.

@@ -1,0 +1,148 @@
+# --- Application stack -------------------------------------------------------
+#
+# One stack for the environments of the application's Environment setting
+# (`just up [local|development]`):
+#
+#   local        this file merged with docker-compose.local.yml: the
+#                infrastructure only, published on 127.0.0.1 for application
+#                processes run on the host.
+#   development  everything in containers: the infrastructure plus the
+#                application processes, which carry `profiles: [app]` as they
+#                are added. Nothing but the API is published on the host.
+#
+# Both are the same compose project, so they share containers and data:
+# switching from one to the other recreates what changed and keeps the volumes.
+# `testing` runs a separate, disposable stack; `staging` and `production` get
+# an override of their own once there is an application image to deploy.
+#
+# Requires `just init` first: the secrets it reads and the variables it
+# interpolates are generated from the templates under .secrets/ and .config/,
+# and none of them is tracked in git.
+#
+# Related files:
+#   - docker/docker-compose.local.yml    ports for the local environment
+#   - docker/docker-compose.testing.yml  the disposable test stack
+#   - .config/compose.env.example        the variables interpolated below
+#
+# Recipes: `just up`, `just down`, `just stop`, `just restart`, `just ps`,
+# `just logs`, `just teardown`.
+
+name: kop-labworks
+
+
+# --- Shared fragments --------------------------------------------------------
+# YAML anchors merged into services below, so a change lands everywhere at
+# once. They are not services and Compose ignores the x- prefix.
+
+# Bounded log growth: without this, json-file logs fill the disk eventually.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+
+# Applies to every service: a process inside a container may never gain more
+# privileges than it started with, even through a setuid binary.
+x-security-defaults: &security-defaults
+  security_opt:
+    - no-new-privileges:true
+
+
+services:
+  # --- Infrastructure --------------------------------------------------------
+  #
+  # Note the two secret styles: PostgreSQL reads its password from a file under
+  # /run/secrets, RabbitMQ from an environment variable — it supports nothing
+  # else. Prefer the file form wherever a service offers it.
+
+  postgresql:
+    image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+    restart: unless-stopped
+    <<: *security-defaults
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - source: postgres-password
+        target: postgres_password
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+    logging: *default-logging
+
+  # Sessions live here. AOF, so a restart does not sign everyone out.
+  redis:
+    image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    restart: unless-stopped
+    <<: *security-defaults
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 5s
+      test: ["CMD", "redis-cli", "ping"]
+    logging: *default-logging
+
+  # Delivery tasks for the channel workers.
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine@sha256:eb6736723c5d0831ab12d29e7a2b8ee1082f744370c2a784b50b84b3b4d6d030
+    restart: unless-stopped
+    <<: *security-defaults
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - backend
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 10s
+      start_period: 30s
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+    logging: *default-logging
+
+
+# --- Networks ----------------------------------------------------------------
+# Two networks rather than one: the infrastructure attaches to the internal
+# one, which has no route out and cannot publish ports. Whatever must be
+# reachable from outside also joins `frontend`.
+
+networks:
+  frontend:
+  backend:
+    internal: true
+
+
+# --- Volumes -----------------------------------------------------------------
+# Named volumes survive `just down`; `just teardown` removes them.
+
+volumes:
+  postgresql-data:
+  redis-data:
+  rabbitmq-data:
+
+
+# --- Secrets -----------------------------------------------------------------
+# The source files are created by `just init` from .secrets/*.example. None of
+# them is tracked in git, and compose refuses to start a stack whose secret
+# file is missing.
+
+secrets:
+  postgres-password:
+    file: ../.secrets/pg_pwd.txt
