@@ -210,6 +210,15 @@ ignore-variadic-names = true
     "T201",  # print is the output channel of a script.
 ]
 
+# Revision scripts are written by alembic from its own template and then fixed
+# up by the post-write hooks in AlembicMigrator. What ruff still objects to
+# belongs to that template, not to us.
+"src/kop/infrastructure/database/migrations/versions/*.py" = [
+    "D415",  # The summary line of the template ends without punctuation.
+    "INP001",  # Revisions are loaded by path, never imported as a package.
+    "W291",  # "Revises: " is written with a trailing space.
+]
+
 "conftest.py" = [
     "D100",
     "D101",
