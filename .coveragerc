@@ -23,6 +23,11 @@
 source_pkgs = kop
 branch = True
 relative_files = True
+# Alembic loads env.py and the revisions by path, outside the import system,
+# so coverage cannot attribute them to the package; they are exercised by the
+# migration tests all the same.
+omit =
+    */migrations/*
 
 
 # --- Path equivalence --------------------------------------------------------
@@ -37,7 +42,9 @@ source =
 
 # --- Reporting ---------------------------------------------------------------
 # fail_under grows together with the code: every feature branch brings its
-# tests and raises the threshold to what they reach. The target is 80.
+# tests and raises the threshold to what they reach. It is measured with the
+# integration and end-to-end tests included, which need a database
+# (KOP_TEST_DATABASE_URL); without one they are skipped and the total drops.
 #
 # exclude_also extends the default exclusions rather than replacing them, and
 # covers code that cannot meaningfully be executed by tests: type-checking
@@ -47,7 +54,7 @@ source =
 show_missing = True
 skip_covered = True
 precision = 2
-fail_under = 0
+fail_under = 85
 exclude_also =
     if TYPE_CHECKING:
     raise NotImplementedError
