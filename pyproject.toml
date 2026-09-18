@@ -5,6 +5,10 @@
 # .coveragerc, .cz.toml). What remains here is what the packaging standard
 # requires plus the dependency groups.
 #
+# The distribution is named after the package, so that the version can be read
+# back with importlib.metadata without hardcoding a second name. The repository
+# and the container image keep the longer name of the course project.
+#
 # The package name appears in several other files as well; rename them together.
 # `grep -rlw kop --exclude-dir=.git --exclude-dir=.venv --exclude=uv.lock .`
 #
@@ -19,19 +23,12 @@
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
 
-# The distribution is kop-labworks, but the importable package is src/kop;
-# without this uv_build would look for src/kop_labworks.
-
-[tool.uv.build-backend]
-module-name = "kop"
-
-
 # --- Core metadata -----------------------------------------------------------
 # `version` is written by `cz bump` (see version_files in .cz.toml); do not
 # edit it by hand. The version itself comes from the git tags.
 
 [project]
-name = "kop-labworks"
+name = "kop"
 version = "0.0.0"
 description = "Personal blog aggregator: publish a post once, deliver it to the web blog, Telegram and VK"
 requires-python = ">=3.12"
@@ -59,7 +56,30 @@ classifiers = [
 
 # Runtime dependencies arrive together with the code that imports them, one
 # feature branch at a time. Development tooling belongs in the groups below.
-dependencies = []
+dependencies = [
+    "alembic>=1.20.0",
+    "dishka>=1.10.1",
+    "fastapi>=0.141.1",
+    "orjson>=3.12.0",
+    "psycopg[binary]>=3.3.5",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "rich>=14.3.0",
+    "sqlalchemy>=2.0.54",
+    "structlog>=26.1.0",
+    "typer>=0.27.2",
+    "typing-extensions>=4.16.0",
+    "uvicorn[standard]>=0.53.0",
+]
+
+
+# --- Console entry points ----------------------------------------------------
+# One name per process, each pointing at the module the image, the Procfile and
+# the justfile start, so all of them run the process the same way.
+
+[project.scripts]
+kop-api = "kop.main.api.entrypoint:main"
+kop-cli = "kop.main.cli.entrypoint:main"
 
 
 # --- Project URLs ------------------------------------------------------------
@@ -95,6 +115,7 @@ lint = [
 ]
 
 test = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
@@ -115,6 +136,11 @@ metrics = [
     "radon>=6.0.1",
 ]
 
+# Runs the processes of the Procfile side by side in one terminal (`just run`).
+processes = [
+    "honcho>=2.0.0",
+]
+
 # The git hooks and the release tooling. The commit message hook itself runs
 # from the commitizen repository (see .pre-commit-config.yaml); this copy is
 # for `just commit` and `just bump`.
@@ -132,6 +158,7 @@ dev = [
     { include-group = "test" },
     { include-group = "security" },
     { include-group = "metrics" },
+    { include-group = "processes" },
     { include-group = "hooks" },
     { include-group = "release" },
 ]

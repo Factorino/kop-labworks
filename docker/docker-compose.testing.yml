@@ -37,6 +37,10 @@ services:
     volumes:
       - ../tests:/app/tests:ro
 
+    # The disposable database below; see `database_url` in tests/conftest.py.
+    environment:
+      KOP_TEST_DATABASE_URL: postgresql+psycopg://kop:tests-only@postgresql:5432/kop_tests
+
     # The suite waits for its dependencies instead of racing them.
     depends_on:
       postgresql:

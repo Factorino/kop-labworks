@@ -1,0 +1,69 @@
+# --- Local configuration (template) ------------------------------------------
+#
+# Copied to .config/local.toml by `just init`. Ignored by git — only this
+# *.example template is tracked.
+#
+# The profile of the `local` environment: application processes run on the
+# host (`just run`, `just migrate`), the infrastructure in containers started
+# by `just up`, published on 127.0.0.1. Read when CONFIG_FILE is unset,
+# since ./.config/local.toml is the default path.
+#
+# Related files:
+#   - .config/development.toml.example  the same settings inside containers
+#   - .config/compose.env.example       the ports and credentials used below
+#
+# Recipes: `just run`, `just migrate`, `just revision`, `just cli`.
+
+
+# --- Service -----------------------------------------------------------------
+
+[service]
+environment = "local"
+debug = true
+
+
+# --- Server ------------------------------------------------------------------
+# Loopback only and with reload: a development run, not a deployment.
+
+[server]
+host = "127.0.0.1"
+port = 8000
+workers = 1
+reload = true
+
+
+# --- API ---------------------------------------------------------------------
+
+[api]
+docs_enabled = true
+
+
+# --- Logging -----------------------------------------------------------------
+# Human-readable output for a terminal; containers log JSON instead. INFO rather
+# than DEBUG: at DEBUG the libraries talk over the output of `kop-cli`.
+
+[logging]
+level = "INFO"
+json_format = false
+
+
+# --- Tracing -----------------------------------------------------------------
+
+[tracing]
+header = "X-Trace-Id"
+required = false
+
+
+# --- Database ----------------------------------------------------------------
+# The PostgreSQL container of the stack, reached through its published port.
+# `port`, `database` and `username` must agree with POSTGRES_PORT, POSTGRES_DB
+# and POSTGRES_USER in .config/compose.env; the password is the same secret
+# the container was initialised with.
+
+[database]
+host = "127.0.0.1"
+port = 54320
+database = "kop"
+username = "kop"
+password_file = ".secrets/pg_pwd.txt"
+echo = false

@@ -53,8 +53,101 @@ x-security-defaults: &security-defaults
   security_opt:
     - no-new-privileges:true
 
+# What every process started from the application image shares: the image, the
+# profile, the hardening, the mounted configuration and the secrets. A service
+# adds only what makes it that process — its command, ports and health check.
+x-app-defaults: &app-defaults
+  image: kop-labworks:local
+  # Built by the `api` service (see its `build`), never pulled.
+  pull_policy: never
+  profiles: [app]
+  init: true  # Reaps zombies; the application need not be PID 1 aware.
+  <<: *security-defaults
+
+  # The filesystem is read-only apart from /tmp. Code that needs to write gets
+  # its own volume or tmpfs — do not relax read_only for it.
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+
+  # The whole configuration, read-only: the container may not rewrite what it
+  # was configured with. The path is the one CONFIG_FILE names.
+  volumes:
+    - ../.config/development.toml:/etc/kop/config.toml:ro
+  environment:
+    CONFIG_FILE: /etc/kop/config.toml
+
+  # Mounted as files under /run/secrets, never as environment variables: a
+  # variable is visible in `docker inspect` and in the process list. Each
+  # target is the path a `*_file` key in .config/development.toml points at.
+  secrets:
+    - source: postgres-password
+      target: postgres_password
+
+  networks:
+    - backend
+  logging: *default-logging
+
 
 services:
+  # --- Application -----------------------------------------------------------
+  # Profile `app`: started in the development environment only. In `local` the
+  # same processes run on the host instead (`just run`).
+
+  # Applies the migrations and exits. A service of its own rather than a step
+  # in the API's startup: with several API replicas each would race to migrate
+  # the same schema.
+  migrate:
+    <<: *app-defaults
+    command: ["kop-cli", "db", "upgrade"]
+    restart: "no"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  api:
+    <<: *app-defaults
+    # The one service that builds the image; the others reuse the tag.
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: runtime
+    command: ["kop-api"]
+    restart: unless-stopped
+    stop_grace_period: 15s  # Time allowed for a clean shutdown on SIGTERM.
+
+    # The schema has to exist before the first request, so the API waits for
+    # the one-shot migration to finish rather than merely to start.
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+    # Loopback only: this stack is for development. The container side must
+    # agree with `server.port` in .config/development.toml.
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    networks:
+      - backend
+      - frontend
+
+    # Liveness, matching what /health answers. The standard library rather
+    # than curl, which the slim image does not carry.
+    healthcheck:
+      <<: *healthcheck-defaults
+      interval: 10s
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen("http://localhost:8000/health", timeout=2).status == 200 else 1)
+    logging: *default-logging
+
   # --- Infrastructure --------------------------------------------------------
   #
   # Note the two secret styles: PostgreSQL reads its password from a file under
